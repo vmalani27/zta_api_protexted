@@ -1,0 +1,50 @@
+# Test Accounts for ZTA API
+
+# Admin Account
+Email: admin@college.edu
+Password: Admin@123
+Role: admin
+Description: Full access to all resources and operations
+
+# Teacher Account
+Email: teacher@college.edu
+Password: Teacher@123
+Role: teacher
+Description: Access to academic information and student records
+
+# Student Account
+Email: student@college.edu
+Password: Student@123
+Role: student
+Description: Access to own information and academic records
+
+# Warden Account
+Email: warden@college.edu
+Password: Warden@123
+Role: warden
+Description: Access to hostel information and student accommodation details
+
+# Additional Test Accounts
+
+# Teacher 2
+Email: teacher2@college.edu
+Password: Teacher2@123
+Role: teacher
+
+# Student 2
+Email: student2@college.edu
+Password: Student2@123
+Role: student
+
+# Warden 2
+Email: warden2@college.edu
+Password: Warden2@123
+Role: warden
+
+# Notes:
+# 1. All passwords follow the pattern: Role@123
+# 2. These accounts can be used to test different role-based access controls
+# 3. Admin has full access to all resources
+# 4. Teachers can only access academic information
+# 5. Students can only access their own information
+# 6. Wardens can only access hostel-related information 
