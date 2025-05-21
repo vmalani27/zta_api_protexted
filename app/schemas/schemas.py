@@ -5,6 +5,7 @@ from ..models.models import UserRole
 
 # Base schemas
 class UserBase(BaseModel):
+    username: str
     email: EmailStr
     role: UserRole
 
