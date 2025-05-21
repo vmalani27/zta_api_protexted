@@ -1,50 +1,32 @@
-# Test Accounts for ZTA API
+# Test Accounts for ZTA System
+# Format: Username | Password | Roles
 
-# Admin Account
-Email: admin@college.edu
-Password: Admin@123
-Role: admin
-Description: Full access to all resources and operations
+# Administrator Account
+admin_user | Admin@123 | admin
 
-# Teacher Account
-Email: teacher@college.edu
-Password: Teacher@123
-Role: teacher
-Description: Access to academic information and student records
+# Teacher Accounts
+teacher1 | Teacher@123 | Teacher
+teacher2 | Teacher@123 | Teacher
+teacher3 | Teacher@123 | Teacher
 
-# Student Account
-Email: student@college.edu
-Password: Student@123
-Role: student
-Description: Access to own information and academic records
+# Student Accounts
+student1 | Student@123 | Student
+student2 | Student@123 | Student
+student3 | Student@123 | Student
+student4 | Student@123 | Student
+student5 | Student@123 | Student
 
-# Warden Account
-Email: warden@college.edu
-Password: Warden@123
-Role: warden
-Description: Access to hostel information and student accommodation details
+# Warden Accounts
+warden1 | Warden@123 | Warden
+warden2 | Warden@123 | Warden
 
-# Additional Test Accounts
-
-# Teacher 2
-Email: teacher2@college.edu
-Password: Teacher2@123
-Role: teacher
-
-# Student 2
-Email: student2@college.edu
-Password: Student2@123
-Role: student
-
-# Warden 2
-Email: warden2@college.edu
-Password: Warden2@123
-Role: warden
+# Multi-role Accounts (for testing role combinations)
+staff1 | Staff@123 | Teacher, Warden
+staff2 | Staff@123 | Teacher, Warden
+admin_teacher | AdminTeacher@123 | admin, Teacher
 
 # Notes:
-# 1. All passwords follow the pattern: Role@123
-# 2. These accounts can be used to test different role-based access controls
-# 3. Admin has full access to all resources
-# 4. Teachers can only access academic information
-# 5. Students can only access their own information
-# 6. Wardens can only access hostel-related information 
+# 1. Create these users in Keycloak Admin Console
+# 2. Assign the specified roles to each user
+# 3. Use these accounts to test different access levels
+# 4. Passwords follow the pattern: Role@123 for easy testing 
