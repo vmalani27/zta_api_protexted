@@ -2,17 +2,22 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
-from typing import Dict, Any
+from typing import Dict, Any, List
 import requests
 from functools import lru_cache
 import os
 from dotenv import load_dotenv
 import httpx
+from pydantic import BaseModel
 
 load_dotenv()
 
 app = FastAPI(title="PEP Service")
 security = HTTPBearer()
+
+class UserInfo(BaseModel):
+    username: str
+    roles: List[str]
 
 class PEPMiddleware:
     def __init__(self):
@@ -33,6 +38,26 @@ class PEPMiddleware:
         # ZT segment configuration
         self.zt_segment = os.getenv("ZT_SEGMENT", "zt_segment")
         self.allowed_networks = os.getenv("ALLOWED_NETWORKS", "intranet,zt_segment").split(",")
+
+        # Define role-based access policies
+        self.role_policies = {
+            "admin": {
+                "resources": ["*"],
+                "actions": ["*"]
+            },
+            "Teacher": {
+                "resources": ["/academic/*", "/students/*", "/courses/*"],
+                "actions": ["GET", "POST", "PUT"]
+            },
+            "Student": {
+                "resources": ["/academic/own/*", "/courses/enrolled/*"],
+                "actions": ["GET"]
+            },
+            "Warden": {
+                "resources": ["/hostel/*", "/students/hostel/*"],
+                "actions": ["GET", "POST", "PUT"]
+            }
+        }
 
     @lru_cache(maxsize=1)
     def get_signing_key(self, token: str):
@@ -64,15 +89,41 @@ class PEPMiddleware:
         """
         roles = token_data.get("realm_access", {}).get("roles", [])
         
-        # Example policy: Only allow access if user has 'admin' role
-        if action == "read" and "admin" in roles:
+        # Admin has full access
+        if "admin" in roles:
             return True
             
-        # Example policy: Allow access to public resources
-        if resource == "public" and action == "read":
-            return True
-            
+        # Check each role's policy
+        for role in roles:
+            if role in self.role_policies:
+                policy = self.role_policies[role]
+                
+                # Check if resource matches any allowed pattern
+                resource_allowed = any(
+                    self._match_resource_pattern(resource, pattern)
+                    for pattern in policy["resources"]
+                )
+                
+                # Check if action is allowed
+                action_allowed = (
+                    "*" in policy["actions"] or
+                    action.upper() in policy["actions"]
+                )
+                
+                if resource_allowed and action_allowed:
+                    return True
+                    
         return False
+
+    def _match_resource_pattern(self, resource: str, pattern: str) -> bool:
+        """Match resource against pattern with wildcard support"""
+        if pattern == "*":
+            return True
+            
+        # Convert patterns to regex-like matching
+        pattern = pattern.replace("*", ".*")
+        import re
+        return bool(re.match(f"^{pattern}$", resource))
 
     def validate_network_access(self, request: Request) -> bool:
         """
@@ -83,6 +134,13 @@ class PEPMiddleware:
         if client_ip.startswith("192.168.200.") or client_ip.startswith("192.168.100."):
             return True
         return False
+
+    def get_user_info(self, token_data: Dict[str, Any]) -> UserInfo:
+        """Extract user information from token"""
+        return UserInfo(
+            username=token_data.get("preferred_username", ""),
+            roles=token_data.get("realm_access", {}).get("roles", [])
+        )
 
 pep_middleware = PEPMiddleware()
 
@@ -138,6 +196,30 @@ async def health_check():
         "host": pep_middleware.pep_host,
         "network": pep_middleware.zt_segment,
         "keycloak": pep_middleware.keycloak_host
+    }
+
+@app.get("/user/info")
+async def get_user_info(request: Request):
+    """Get information about the authenticated user"""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No valid authorization header")
+        
+    token = auth_header.split(" ")[1]
+    token_data = pep_middleware.validate_token(token)
+    return pep_middleware.get_user_info(token_data)
+
+@app.get("/user/roles")
+async def get_user_roles(request: Request):
+    """Get roles of the authenticated user"""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No valid authorization header")
+        
+    token = auth_header.split(" ")[1]
+    token_data = pep_middleware.validate_token(token)
+    return {
+        "roles": token_data.get("realm_access", {}).get("roles", [])
     }
 
 if __name__ == "__main__":

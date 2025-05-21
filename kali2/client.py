@@ -16,29 +16,116 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-class ZTAClient:
+class PEPAgent:
     def __init__(self):
+        # Keycloak configuration
         self.keycloak_host = os.getenv("KEYCLOAK_HOST", "http://localhost:8080")
         self.realm = os.getenv("REALM", "zta")
         self.client_id = os.getenv("CLIENT_ID", "pep-backend")
         self.client_secret = os.getenv("CLIENT_SECRET", "")
         
+        # PEP service configuration
         self.pep_host = os.getenv("PEP_HOST", "localhost")
         self.pep_port = os.getenv("PEP_PORT", "5000")
         self.pep_endpoint = f"http://{self.pep_host}:{self.pep_port}"
 
+        # Resource service configuration
         self.resource_host = os.getenv("RESOURCE_HOST", "192.168.200.4")
         self.resource_port = os.getenv("RESOURCE_PORT", "5001")
 
+        # OIDC configuration
         self.discovery_url = f"{self.keycloak_host}/realms/{self.realm}/.well-known/openid-configuration"
         self.discovery_data = self.get_discovery_document()
 
+        # Token management
         self.access_token = None
         self.refresh_token = None
         self.token_expiry = 0
         self.jwks_client = None
         self.username = None
         self.user_roles = []
+
+        # PEP connection status
+        self.pep_connected = False
+        logger.info("PEP Agent initialized")
+
+    def connect_to_pep(self) -> bool:
+        """Establish connection with PEP server"""
+        try:
+            response = requests.get(f"{self.pep_endpoint}/health")
+            response.raise_for_status()
+            self.pep_connected = True
+            logger.info(f"Connected to PEP server at {self.pep_endpoint}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to connect to PEP server: {str(e)}")
+            self.pep_connected = False
+            return False
+
+    def capture_login_request(self, username: str, password: str) -> Tuple[bool, str]:
+        """Capture and process login request"""
+        logger.info(f"Capturing login request for user: {username}")
+        
+        # First verify PEP connection
+        if not self.pep_connected and not self.connect_to_pep():
+            return False, "Cannot connect to PEP server"
+
+        # Then attempt Keycloak authentication
+        try:
+            token_url = self.discovery_data.get("token_endpoint")
+            data = {
+                "grant_type": "password",
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "username": username,
+                "password": password
+            }
+            
+            logger.info("Sending authentication request to Keycloak")
+            resp = requests.post(token_url, data=data)
+
+            if resp.status_code in (400, 401, 403):
+                error = resp.json().get("error_description", "Authentication failed")
+                logger.error(f"Authentication failed: {error}")
+                return False, error
+
+            resp.raise_for_status()
+            token_data = resp.json()
+
+            # Store tokens
+            self.access_token = token_data["access_token"]
+            self.refresh_token = token_data.get("refresh_token")
+            self.token_expiry = time.time() + token_data["expires_in"] - 30
+            self.username = username
+
+            # Decode and store roles
+            decoded = jwt.decode(self.access_token, options={"verify_signature": False})
+            self.user_roles = self.get_user_roles(decoded)
+
+            logger.info(f"Login successful for {username}")
+            logger.info(f"User roles: {self.user_roles}")
+            
+            # Verify PEP connection with new token
+            if not self.verify_pep_connection():
+                return False, "Failed to establish PEP connection with new token"
+                
+            return True, "Login successful"
+            
+        except Exception as e:
+            logger.error(f"Login failed: {str(e)}")
+            return False, str(e)
+
+    def verify_pep_connection(self) -> bool:
+        """Verify PEP connection with current token"""
+        try:
+            headers = {"Authorization": f"Bearer {self.access_token}"}
+            response = requests.get(f"{self.pep_endpoint}/health", headers=headers)
+            response.raise_for_status()
+            logger.info("PEP connection verified with current token")
+            return True
+        except Exception as e:
+            logger.error(f"PEP connection verification failed: {str(e)}")
+            return False
 
     def get_discovery_document(self) -> Dict[str, Any]:
         try:
@@ -70,43 +157,6 @@ class ZTAClient:
 
     def get_user_roles(self, token_data: Dict[str, Any]) -> List[str]:
         return token_data.get('realm_access', {}).get('roles', [])
-
-    def login(self, username: str, password: str) -> Tuple[bool, str]:
-        if not self.verify_keycloak_connection():
-            return False, "Cannot connect to Keycloak server"
-
-        try:
-            token_url = self.discovery_data.get("token_endpoint")
-            data = {
-                "grant_type": "password",
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "username": username,
-                "password": password
-            }
-            resp = requests.post(token_url, data=data)
-
-            if resp.status_code in (400, 401, 403):
-                error = resp.json().get("error_description", "Authentication failed")
-                return False, error
-
-            resp.raise_for_status()
-            token_data = resp.json()
-
-            self.access_token = token_data["access_token"]
-            self.refresh_token = token_data.get("refresh_token")
-            self.token_expiry = time.time() + token_data["expires_in"] - 30
-            self.username = username
-
-            decoded = jwt.decode(self.access_token, options={"verify_signature": False})
-            self.user_roles = self.get_user_roles(decoded)
-
-            logger.info(f"Login successful for {username}")
-            logger.info(f"User roles: {self.user_roles}")
-            return True, "Login successful"
-        except Exception as e:
-            logger.error(f"Login failed: {str(e)}")
-            return False, str(e)
 
     def has_role(self, role: str) -> bool:
         return role in self.user_roles
@@ -209,33 +259,46 @@ class ZTAClient:
 
 def main():
     try:
-        client = ZTAClient()
-        client.initialize_jwks()
-
+        # Initialize PEP agent
+        agent = PEPAgent()
+        
+        # Get user credentials
         username = input("Username: ")
         password = getpass.getpass("Password: ")
-
-        success, message = client.login(username, password)
+        
+        # Capture and process login request
+        success, message = agent.capture_login_request(username, password)
         if not success:
-            logger.error(message)
+            logger.error(f"Login failed: {message}")
             return
-
-        token = client.get_token()
-        token_data = client.validate_token(token)
-
-        logger.info(f"\nUser: {client.username}")
-        logger.info(f"Roles: {', '.join(client.user_roles)}")
-
-        for role in ['admin', 'Teacher', 'Student', 'Warden']:
-            if client.has_role(role):
-                logger.info(f"User has role: {role}")
-
-        if client.test_connection():
-            logger.info("✅ All services reachable.")
+            
+        # Get and validate token
+        token = agent.get_token()
+        token_data = agent.validate_token(token)
+        
+        # Display user information
+        logger.info("\nUser Information:")
+        logger.info(f"Username: {agent.username}")
+        logger.info(f"Roles: {', '.join(agent.user_roles)}")
+        
+        # Check for specific roles
+        if agent.has_role('admin'):
+            logger.info("User has admin privileges")
+        if agent.has_role('Teacher'):
+            logger.info("User has teacher privileges")
+        if agent.has_role('Student'):
+            logger.info("User has student privileges")
+        if agent.has_role('Warden'):
+            logger.info("User has warden privileges")
+        
+        # Test PEP connection
+        if agent.verify_pep_connection():
+            logger.info("\nPEP connection verified successfully!")
         else:
-            logger.warning("❌ Service check failed.")
+            logger.error("\nPEP connection verification failed")
+            
     except Exception as e:
-        logger.error(f"Main failed: {e}")
+        logger.error(f"Error in main execution: {str(e)}")
         raise
 
 if __name__ == "__main__":
