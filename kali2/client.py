@@ -261,6 +261,7 @@ def main():
     try:
         # Initialize PEP agent
         agent = PEPAgent()
+        agent.initialize_jwks()  # Initialize JWKS client first
         
         # Get user credentials
         username = input("Username: ")
@@ -274,28 +275,34 @@ def main():
             
         # Get and validate token
         token = agent.get_token()
-        token_data = agent.validate_token(token)
-        
-        # Display user information
-        logger.info("\nUser Information:")
-        logger.info(f"Username: {agent.username}")
-        logger.info(f"Roles: {', '.join(agent.user_roles)}")
-        
-        # Check for specific roles
-        if agent.has_role('admin'):
-            logger.info("User has admin privileges")
-        if agent.has_role('Teacher'):
-            logger.info("User has teacher privileges")
-        if agent.has_role('Student'):
-            logger.info("User has student privileges")
-        if agent.has_role('Warden'):
-            logger.info("User has warden privileges")
-        
-        # Test PEP connection
-        if agent.verify_pep_connection():
-            logger.info("\nPEP connection verified successfully!")
-        else:
-            logger.error("\nPEP connection verification failed")
+        if not token:
+            logger.error("No valid token available")
+            return
+            
+        try:
+            token_data = agent.validate_token(token)
+            
+            # Display welcome message based on primary role
+            if agent.has_role('admin'):
+                print("\nWelcome, Administrator!")
+            elif agent.has_role('Teacher'):
+                print("\nWelcome, Teacher!")
+            elif agent.has_role('Student'):
+                print("\nWelcome, Student!")
+            elif agent.has_role('Warden'):
+                print("\nWelcome, Warden!")
+            else:
+                print("\nWelcome!")
+            
+            # Test PEP connection
+            if agent.verify_pep_connection():
+                print("Connected to PEP server successfully!")
+            else:
+                print("Warning: PEP connection verification failed")
+                
+        except Exception as e:
+            logger.error(f"Token validation failed: {str(e)}")
+            return
             
     except Exception as e:
         logger.error(f"Error in main execution: {str(e)}")
