@@ -2,16 +2,23 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
+from typing import Optional
 
+# Load environment variables
 load_dotenv()
 
-app = FastAPI(title="Protected Resource Service")
+# Network configuration with explicit defaults
+RESOURCE_HOST: str = os.getenv("RESOURCE_HOST", "192.168.200.4")  # ZT segment IP of Kali4
+RESOURCE_PORT: int = int(os.getenv("RESOURCE_PORT", "5001"))
+ZT_SEGMENT: str = os.getenv("ZT_SEGMENT", "zt_segment")
+PEP_SERVICE_IP: str = os.getenv("PEP_SERVICE_IP", "192.168.200.2")  # ZT segment IP of Kali2
 
-# Network configuration
-RESOURCE_HOST = os.getenv("RESOURCE_HOST", "192.168.200.4")  # ZT segment IP of Kali4
-RESOURCE_PORT = int(os.getenv("RESOURCE_PORT", "5001"))
-ZT_SEGMENT = os.getenv("ZT_SEGMENT", "zt_segment")
-PEP_SERVICE_IP = os.getenv("PEP_SERVICE_IP", "192.168.200.2")  # ZT segment IP of Kali2
+# Create FastAPI app
+app = FastAPI(
+    title="Protected Resource Service",
+    description="Resource service running on Kali4 in ZT segment",
+    version="1.0.0"
+)
 
 # Set up CORS - only allow requests from PEP service
 app.add_middleware(
@@ -41,7 +48,8 @@ def root():
         "message": "Welcome to Protected Resource Service",
         "host": RESOURCE_HOST,
         "network": ZT_SEGMENT,
-        "interface": "ZT segment (eth1)"
+        "interface": "ZT segment (eth1)",
+        "pep_service": PEP_SERVICE_IP
     }
 
 @app.get("/protected-resource")
@@ -74,6 +82,18 @@ async def public_resource():
             "network": ZT_SEGMENT,
             "interface": "ZT segment (eth1)"
         }
+    }
+
+@app.get("/config")
+def get_config():
+    """
+    Get current service configuration
+    """
+    return {
+        "resource_host": RESOURCE_HOST,
+        "resource_port": RESOURCE_PORT,
+        "zt_segment": ZT_SEGMENT,
+        "pep_service_ip": PEP_SERVICE_IP
     }
 
 if __name__ == "__main__":
