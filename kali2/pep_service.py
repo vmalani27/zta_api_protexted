@@ -2,22 +2,18 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
-from typing import Dict, Any, List
+from typing import Dict, Any
 import requests
 from functools import lru_cache
 import os
 from dotenv import load_dotenv
 import httpx
-from pydantic import BaseModel
+import datetime
 
 load_dotenv()
 
 app = FastAPI(title="PEP Service")
 security = HTTPBearer()
-
-class UserInfo(BaseModel):
-    username: str
-    roles: List[str]
 
 class PEPMiddleware:
     def __init__(self):
@@ -31,6 +27,9 @@ class PEPMiddleware:
         # Resource service configuration - using ZT segment IP of Kali4
         self.resource_service_url = os.getenv("RESOURCE_SERVICE_URL", "http://192.168.200.4:5001")
         
+        # PDP configuration
+        self.pdp_url = os.getenv("PDP_URL", "http://192.168.200.3:5002")
+        
         # Network configuration
         self.pep_host = os.getenv("PEP_HOST", "192.168.200.2")  # ZT segment IP of Kali2
         self.pep_port = int(os.getenv("PEP_PORT", "5000"))
@@ -38,26 +37,6 @@ class PEPMiddleware:
         # ZT segment configuration
         self.zt_segment = os.getenv("ZT_SEGMENT", "zt_segment")
         self.allowed_networks = os.getenv("ALLOWED_NETWORKS", "intranet,zt_segment").split(",")
-
-        # Define role-based access policies
-        self.role_policies = {
-            "admin": {
-                "resources": ["*"],
-                "actions": ["*"]
-            },
-            "Teacher": {
-                "resources": ["/academic/*", "/students/*", "/courses/*"],
-                "actions": ["GET", "POST", "PUT"]
-            },
-            "Student": {
-                "resources": ["/academic/own/*", "/courses/enrolled/*"],
-                "actions": ["GET"]
-            },
-            "Warden": {
-                "resources": ["/hostel/*", "/students/hostel/*"],
-                "actions": ["GET", "POST", "PUT"]
-            }
-        }
 
     @lru_cache(maxsize=1)
     def get_signing_key(self, token: str):
@@ -83,47 +62,35 @@ class PEPMiddleware:
         except Exception as e:
             raise HTTPException(status_code=401, detail=str(e))
 
-    def enforce_policy(self, token_data: Dict[str, Any], resource: str, action: str) -> bool:
+    async def consult_pdp(self, token_data: Dict[str, Any], resource: str, action: str) -> bool:
         """
-        Enforce access control policies based on token claims and resource/action
+        Consult the Policy Decision Point (PDP) for access control decisions
         """
-        roles = token_data.get("realm_access", {}).get("roles", [])
-        
-        # Admin has full access
-        if "admin" in roles:
-            return True
-            
-        # Check each role's policy
-        for role in roles:
-            if role in self.role_policies:
-                policy = self.role_policies[role]
-                
-                # Check if resource matches any allowed pattern
-                resource_allowed = any(
-                    self._match_resource_pattern(resource, pattern)
-                    for pattern in policy["resources"]
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.pdp_url}/evaluate",
+                    json={
+                        "subject": {
+                            "roles": token_data.get("realm_access", {}).get("roles", []),
+                            "username": token_data.get("preferred_username", ""),
+                            "email": token_data.get("email", "")
+                        },
+                        "resource": resource,
+                        "action": action,
+                        "environment": {
+                            "network": self.zt_segment,
+                            "timestamp": str(datetime.datetime.utcnow())
+                        }
+                    }
                 )
-                
-                # Check if action is allowed
-                action_allowed = (
-                    "*" in policy["actions"] or
-                    action.upper() in policy["actions"]
-                )
-                
-                if resource_allowed and action_allowed:
-                    return True
-                    
-        return False
-
-    def _match_resource_pattern(self, resource: str, pattern: str) -> bool:
-        """Match resource against pattern with wildcard support"""
-        if pattern == "*":
-            return True
-            
-        # Convert patterns to regex-like matching
-        pattern = pattern.replace("*", ".*")
-        import re
-        return bool(re.match(f"^{pattern}$", resource))
+                if response.status_code == 200:
+                    decision = response.json()
+                    return decision.get("decision", False)
+                return False
+        except Exception as e:
+            print(f"Error consulting PDP: {str(e)}")
+            return False
 
     def validate_network_access(self, request: Request) -> bool:
         """
@@ -134,13 +101,6 @@ class PEPMiddleware:
         if client_ip.startswith("192.168.200.") or client_ip.startswith("192.168.100."):
             return True
         return False
-
-    def get_user_info(self, token_data: Dict[str, Any]) -> UserInfo:
-        """Extract user information from token"""
-        return UserInfo(
-            username=token_data.get("preferred_username", ""),
-            roles=token_data.get("realm_access", {}).get("roles", [])
-        )
 
 pep_middleware = PEPMiddleware()
 
@@ -167,11 +127,11 @@ async def pep_middleware_handler(request: Request, call_next):
     resource = request.url.path.strip("/")
     action = request.method.lower()
 
-    # Enforce policy
-    if not pep_middleware.enforce_policy(token_data, resource, action):
+    # Consult PDP for policy decision
+    if not await pep_middleware.consult_pdp(token_data, resource, action):
         raise HTTPException(
             status_code=403,
-            detail="Access denied based on policy enforcement"
+            detail="Access denied based on policy decision"
         )
 
     # Forward the request to the resource service
@@ -195,31 +155,8 @@ async def health_check():
         "service": "pep",
         "host": pep_middleware.pep_host,
         "network": pep_middleware.zt_segment,
-        "keycloak": pep_middleware.keycloak_host
-    }
-
-@app.get("/user/info")
-async def get_user_info(request: Request):
-    """Get information about the authenticated user"""
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No valid authorization header")
-        
-    token = auth_header.split(" ")[1]
-    token_data = pep_middleware.validate_token(token)
-    return pep_middleware.get_user_info(token_data)
-
-@app.get("/user/roles")
-async def get_user_roles(request: Request):
-    """Get roles of the authenticated user"""
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No valid authorization header")
-        
-    token = auth_header.split(" ")[1]
-    token_data = pep_middleware.validate_token(token)
-    return {
-        "roles": token_data.get("realm_access", {}).get("roles", [])
+        "keycloak": pep_middleware.keycloak_host,
+        "pdp": pep_middleware.pdp_url
     }
 
 if __name__ == "__main__":
@@ -227,6 +164,7 @@ if __name__ == "__main__":
     print(f"Starting PEP service on {pep_middleware.pep_host}:{pep_middleware.pep_port}")
     print(f"Resource service URL: {pep_middleware.resource_service_url}")
     print(f"Keycloak URL: {pep_middleware.keycloak_host}")
+    print(f"PDP URL: {pep_middleware.pdp_url}")
     uvicorn.run(
         app, 
         host="0.0.0.0",  # Listen on all interfaces
