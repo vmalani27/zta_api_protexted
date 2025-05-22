@@ -5,17 +5,25 @@ import jwt
 import os
 from dotenv import load_dotenv
 
+class Subject(BaseModel):
+    roles: List[str]
+    username: str
+    email: str
+
+class Environment(BaseModel):
+    network: str
+    timestamp: str
+
 class PolicyRequest(BaseModel):
-    subject: str  # User ID
-    roles: List[str]  # User roles
-    resource: str  # Resource being accessed
-    action: str  # Action being performed
-    context: Dict  # Additional context (IP, time, etc.)
+    subject: Subject
+    resource: str
+    action: str
+    environment: Environment
 
 class PolicyDecision(BaseModel):
     decision: bool
     reason: str
-    obligations: Optional[Dict]  # Additional actions required
+    obligations: Optional[Dict] = None
 
 class PDP:
     def __init__(self):
@@ -105,7 +113,7 @@ class PDP:
         
         # Check roles
         if "roles" in conditions:
-            if not any(role in request.roles for role in conditions["roles"]):
+            if not any(role in request.subject.roles for role in conditions["roles"]):
                 return False
 
         # Check resources
@@ -116,7 +124,7 @@ class PDP:
 
         # Check actions
         if "actions" in conditions:
-            if request.action not in conditions["actions"]:
+            if request.action.upper() not in [action.upper() for action in conditions["actions"]]:
                 return False
 
         return True
@@ -140,8 +148,11 @@ async def evaluate_policy(request: PolicyRequest):
     """
     Evaluate access request and return policy decision
     """
-    decision = pdp.evaluate_policy(request)
-    return decision
+    try:
+        decision = pdp.evaluate_policy(request)
+        return decision
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health_check():
@@ -153,3 +164,8 @@ async def health_check():
         "service": "pdp",
         "policies": list(pdp.policies.keys())
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    print("Starting PDP service on port 5002...")
+    uvicorn.run(app, host="0.0.0.0", port=5002)
