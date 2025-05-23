@@ -9,6 +9,11 @@ import os
 from dotenv import load_dotenv
 import httpx
 import datetime
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -37,6 +42,10 @@ class PEPMiddleware:
         # ZT segment configuration
         self.zt_segment = os.getenv("ZT_SEGMENT", "zt_segment")
         self.allowed_networks = os.getenv("ALLOWED_NETWORKS", "intranet,zt_segment").split(",")
+        
+        # Timeout configuration
+        self.resource_timeout = float(os.getenv("RESOURCE_TIMEOUT", "5.0"))  # 5 seconds timeout
+        self.pdp_timeout = float(os.getenv("PDP_TIMEOUT", "3.0"))  # 3 seconds timeout
 
     @lru_cache(maxsize=1)
     def get_signing_key(self, token: str):
@@ -67,7 +76,7 @@ class PEPMiddleware:
         Consult the Policy Decision Point (PDP) for access control decisions
         """
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=self.pdp_timeout) as client:
                 response = await client.post(
                     f"{self.pdp_url}/evaluate",
                     json={
@@ -87,10 +96,14 @@ class PEPMiddleware:
                 if response.status_code == 200:
                     decision = response.json()
                     return decision.get("decision", False)
+                logger.error(f"PDP returned status code {response.status_code}")
                 return False
+        except httpx.TimeoutException:
+            logger.error("PDP consultation timed out")
+            raise HTTPException(status_code=503, detail="Policy decision service timed out")
         except Exception as e:
-            print(f"Error consulting PDP: {str(e)}")
-            return False
+            logger.error(f"Error consulting PDP: {str(e)}")
+            raise HTTPException(status_code=503, detail="Policy decision service unavailable")
 
     def validate_network_access(self, request: Request) -> bool:
         """
@@ -135,7 +148,7 @@ async def pep_middleware_handler(request: Request, call_next):
         )
 
     # Forward the request to the resource service
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=pep_middleware.resource_timeout) as client:
         try:
             # Forward the request to the resource service
             response = await client.request(
@@ -145,8 +158,24 @@ async def pep_middleware_handler(request: Request, call_next):
                 content=await request.body()
             )
             return response
+        except httpx.TimeoutException:
+            logger.error(f"Resource service timed out after {pep_middleware.resource_timeout} seconds")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Protected resource service timed out after {pep_middleware.resource_timeout} seconds"
+            )
+        except httpx.ConnectError:
+            logger.error("Could not connect to resource service")
+            raise HTTPException(
+                status_code=503,
+                detail="Protected resource service is not running or unreachable"
+            )
         except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Resource service unavailable: {str(e)}")
+            logger.error(f"Error accessing resource service: {str(e)}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Error accessing protected resource service: {str(e)}"
+            )
 
 @app.get("/health")
 async def health_check():
