@@ -1,0 +1,168 @@
+Zero Trust Architecture Project Checklist
+========================================
+
+Project Overview
+----------------
+This checklist tracks the implementation status of a Zero Trust Architecture (ZTA) across three main nodes:
+- **Kali1:** Network Access Control (NAC) (Planned / Not Yet Implemented)
+- **Kali2:** Identity & Access Management (IAM), Policy Enforcement Point (PEP), Policy Decision Point (PDP)
+- **Kali4:** Protected Resource Service
+
+Legend:
+- [x] Complete
+- [ ] Incomplete / Missing
+
+
+Kali1: Network Access Control (NAC)
+-----------------------------------
+**Status:** _Planned / Not Yet Implemented_
+
+**Role:**
+- Will act as the 802.1x authentication server (FreeRADIUS)
+- Will perform device compliance checks before network access
+- Will assign devices to the ZT segment upon successful authentication and compliance
+
+**Current State:**
+- [x] nftables firewall is configured to enforce Zero Trust segmentation and logging
+- [x] Network interface IP assignment is configured according to the ZT architecture
+- [ ] FreeRADIUS installation and configuration (pending)
+- [ ] Compliance check script (pending)
+- [ ] FreeRADIUS service management (pending)
+- [ ] Integration of compliance check with FreeRADIUS authentication flow (pending)
+- [ ] Automated network access revocation for non-compliant devices (pending)
+- [ ] Centralized logging and alerting for NAC events (pending)
+- [ ] Integration with network switches for dynamic VLAN assignment (802.1x enforcement) (pending)
+- [ ] Automated backup and recovery procedures (pending)
+
+
+Kali2: IAM, PEP, PDP (Access Control Core)
+------------------------------------------
+**Role:**
+- **IAM (Identity & Access Management):**
+  - Handles user authentication and authorization (Keycloak is implemented)
+  - Issues and manages authentication tokens
+  - Maintains user and role database (test users are implemented)
+- **PEP (Policy Enforcement Point):**
+  - Receives all access requests from users/devices (PEP client)
+  - Forwards requests to the PEP server for policy enforcement
+  - Validates authentication tokens and session state
+- **PDP (Policy Decision Point):**
+  - Evaluates access requests against defined security policies
+  - Makes allow/deny decisions based on user, device, context, and compliance status
+  - Returns policy decisions to the PEP for enforcement
+
+**How PEP Client, IAM, PEP Server, and PDP Work Together:**
+1. **PEP Client** (on user device) sends an access request with credentials/token to the **PEP Server** (Kali2).
+2. **PEP Server** validates the token with the **IAM** (Keycloak) and forwards the request to the **PDP**.
+3. **PDP** evaluates the request against security policies (user role, compliance, context).
+4. **PDP** returns an allow/deny decision to the **PEP Server**.
+5. If allowed, the **PEP Server** grants access to the requested resource; otherwise, access is denied.
+
+**Implemented:**
+- [x] Keycloak IAM server setup and configuration
+- [x] Test users created in Keycloak
+- [x] PEP client and server communication
+- [x] PDP logic for policy evaluation
+- [x] Role-based access control (RBAC) for users and resources
+- [x] Secure token issuance and validation
+- [x] Integration with user and device database
+- [x] Logging of access requests and policy decisions
+
+**Missing / To Do:**
+- [ ] Integration with NAC (Kali1) for real-time compliance status
+- [ ] Advanced anomaly detection and adaptive policy enforcement
+- [ ] Multi-factor authentication (MFA) integration
+- [ ] Automated session revocation on detected threats
+- [ ] Centralized dashboard for monitoring and policy management
+
+
+Kali4: Protected Resource Service
+---------------------------------
+**Role:**
+- Hosts the protected resources (e.g., student, teacher, warden, and admin data)
+- Exposes APIs for resource access, modification, and management
+- Enforces access control based on tokens and policies from Kali2
+
+**Implemented:**
+- [x] Resource service API (CRUD for students, teachers, wardens, admins)
+- [x] Role-based access enforcement at the resource level
+- [x] Secure communication with PEP (Kali2)
+- [x] Logging of resource access and modification events
+
+**Missing / To Do:**
+- [ ] Fine-grained audit logging and alerting
+- [ ] Data encryption at rest and in transit
+- [ ] Automated backup and disaster recovery
+- [ ] Integration with monitoring/alerting systems
+
+
+General Security & Monitoring
+----------------------------
+- [ ] Continuous monitoring and anomaly detection across all nodes
+- [ ] Centralized log aggregation and analysis
+- [ ] Incident response and remediation procedures
+- [ ] Regular security baseline updates and compliance reviews
+
+✅ Environment Deployment
+------------------------
+- [x] Basic server infrastructure setup (IAM, PEP, SA, NA servers)
+- [x] Basic agent infrastructure setup (IAM, PEP, SA, NA agents)
+- [x] Database configuration and setup
+
+
+✅ Network Access & Security
+---------------------------
+- [x] Basic authentication system implementation
+- [x] Security baseline checks
+- [x] Database schema for user and device management
+- [x] Resource service implementation
+- [x] Role-based access control (RBAC)
+- [x] JWT token-based authentication
+- [x] API endpoint security
+
+✅ API Implementation
+--------------------
+- [x] Authentication endpoints
+- [x] User management endpoints
+- [x] Student management endpoints
+- [x] Teacher management endpoints
+- [x] Hostel management endpoints
+- [x] Warden management endpoints
+- [x] API documentation (Swagger/ReDoc)
+
+❌ Distributed Firewall Features
+------------------------------
+- [ ] Device compliance checks at firewall level
+- [ ] Ingress filtering implementation
+- [ ] Network anomaly detection at firewall level
+- [ ] Firewall logging for authentication requests
+
+❌ Authentication & Authorization
+-------------------------------
+- [ ] 802.1x protocol implementation
+- [ ] Secure socket proxy for authentication ticket updates
+- [ ] Single Packet Authorization (SPA) mode
+- [ ] OIDC & OAuth2.0 integration for SSO
+
+❌ User and Device Verification
+-----------------------------
+- [ ] Device log collection system
+- [ ] Security baseline verification
+- [ ] User activity monitoring
+- [ ] Automatic screen lock verification
+- [ ] SSH login status monitoring
+- [ ] Firewall settings verification
+- [ ] Antivirus status checking
+- [ ] Network change detection
+
+❌ Continuous Monitoring
+-----------------------
+- [ ] Traffic monitoring system
+- [ ] Machine learning algorithms for anomaly detection
+- [ ] Multi-factor authentication (MFA) implementation
+- [ ] Access permission revocation system
+- [ ] Real-time network pattern analysis
+
+Legend:
+✅ - Implemented features
+❌ - Pending features 

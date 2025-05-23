@@ -1,0 +1,37 @@
+Network Topology for ZT Architecture VMs
+========================================
+
+# Internet (external)
+- Interface: eth0
+- IP Assignment: DHCP or static as needed
+
+# ZT Segment (trusted)
+- Interface: eth1
+- Subnet: 192.168.200.0/24
+- Each VM gets: 192.168.200.<VM_NUMBER>
+  - Example: kali1 = 192.168.200.1, kali2 = 192.168.200.2, kali3 = 192.168.200.3
+
+# Intranet (internal legacy)
+- Interface: eth2
+- Subnet: 192.168.100.0/24
+- Each VM gets: 192.168.100.<VM_NUMBER>
+  - Example: kali1 = 192.168.100.1, kali2 = 192.168.100.2, kali3 = 192.168.100.3
+
+# VM Interface Assignments
+---------------------------------
+- kali1:
+  - eth0: DHCP or static (Internet)
+  - eth1: 192.168.200.1 (ZT Segment)
+  - eth2: 192.168.100.1 (Intranet)
+- kali2:
+  - eth0: DHCP or static (Internet)
+  - eth1: 192.168.200.2 (ZT Segment)
+  - eth2: 192.168.100.2 (Intranet)
+- kali3:
+  - eth0: DHCP or static (Internet)
+  - eth1: 192.168.200.3 (ZT Segment)
+  - eth2: 192.168.100.3 (Intranet)
+
+# Note:
+- The last octet of the IP address matches the VM number for both ZT and Intranet segments.
+- This structure helps in easy identification and management of VMs in the network. 
