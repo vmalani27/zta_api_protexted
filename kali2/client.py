@@ -8,6 +8,8 @@ import logging
 from typing import Dict, Any, Optional, Tuple, List
 import time
 import getpass
+import httpx
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -256,6 +258,132 @@ class PEPAgent:
         except Exception as e:
             logger.error(f"Test connection failed: {e}")
             return False
+
+class ZTAClient:
+    def __init__(self, pep_url: str, keycloak_url: str):
+        self.pep_url = pep_url
+        self.keycloak_url = keycloak_url
+        self.session_key: Optional[str] = None
+        self.session_expires_at: Optional[int] = None
+        self.http_client = httpx.Client()
+
+    def handle_error_response(self, response: httpx.Response) -> None:
+        """Handle error responses from the PEP service"""
+        try:
+            error_data = response.json()
+            error_msg = error_data.get('detail', 'Unknown error')
+            
+            if response.status_code == 401:
+                if "No valid authorization header" in error_msg:
+                    logger.error("Authentication required. Please authenticate first.")
+                elif "Token has expired" in error_msg:
+                    logger.error("Session expired. Please re-authenticate.")
+                else:
+                    logger.error(f"Authentication error: {error_msg}")
+            elif response.status_code == 403:
+                if "Not in allowed network" in error_msg:
+                    logger.error("Access denied: You are not in the allowed network.")
+                else:
+                    logger.error(f"Access denied: {error_msg}")
+            elif response.status_code == 503:
+                logger.error(f"Service unavailable: {error_msg}")
+            else:
+                logger.error(f"Error: {error_msg}")
+        except json.JSONDecodeError:
+            logger.error(f"Error: {response.text}")
+
+    async def get_nonce(self, subject: Dict) -> Optional[str]:
+        """Request a nonce from the PEP service"""
+        try:
+            response = await self.http_client.post(
+                f"{self.pep_url}/auth/nonce",
+                json={
+                    "subject": subject,
+                    "timestamp": str(time.time())
+                }
+            )
+            
+            if response.status_code == 200:
+                nonce_data = response.json()
+                return nonce_data.get('nonce')
+            else:
+                self.handle_error_response(response)
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error requesting nonce: {str(e)}")
+            return None
+
+    async def get_session_key(self, subject: Dict, nonce: str, nonce_response: str) -> bool:
+        """Request session keys after nonce validation"""
+        try:
+            response = await self.http_client.post(
+                f"{self.pep_url}/auth/session",
+                json={
+                    "subject": subject,
+                    "nonce": nonce,
+                    "nonce_response": nonce_response,
+                    "timestamp": str(time.time())
+                }
+            )
+            
+            if response.status_code == 200:
+                session_data = response.json()
+                self.session_key = session_data.get('session_key')
+                self.session_expires_at = session_data.get('expires_at')
+                return True
+            else:
+                self.handle_error_response(response)
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error getting session key: {str(e)}")
+            return False
+
+    async def validate_session(self) -> bool:
+        """Validate if the current session is still valid"""
+        if not self.session_key:
+            return False
+            
+        try:
+            response = await self.http_client.get(
+                f"{self.pep_url}/validate-session/{self.session_key}"
+            )
+            
+            if response.status_code == 200:
+                return True
+            else:
+                self.handle_error_response(response)
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error validating session: {str(e)}")
+            return False
+
+    async def make_authenticated_request(self, method: str, endpoint: str, data: Optional[Dict] = None) -> Optional[Dict]:
+        """Make an authenticated request to a protected resource"""
+        if not self.session_key:
+            logger.error("No session key available. Please authenticate first.")
+            return None
+            
+        try:
+            headers = {"Authorization": f"Bearer {self.session_key}"}
+            response = await self.http_client.request(
+                method=method,
+                url=f"{self.pep_url}/{endpoint}",
+                headers=headers,
+                json=data
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                self.handle_error_response(response)
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error making authenticated request: {str(e)}")
+            return None
 
 def main():
     try:

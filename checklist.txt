@@ -4,7 +4,7 @@ Zero Trust Architecture Project Checklist
 Project Overview
 ----------------
 This checklist tracks the implementation status of a Zero Trust Architecture (ZTA) across three main nodes:
-- **Kali1:** Network Access Control (NAC) (Planned / Not Yet Implemented)
+- **Kali1:** Network Access Control (NAC) (Partially Implemented)
 - **Kali2:** Identity & Access Management (IAM), Policy Enforcement Point (PEP), Policy Decision Point (PDP)
 - **Kali4:** Protected Resource Service
 
@@ -15,20 +15,27 @@ Legend:
 
 Kali1: Network Access Control (NAC)
 -----------------------------------
-**Status:** _Planned / Not Yet Implemented_
+**Status:** _Partially Implemented_
 
 **Role:**
 - Will act as the 802.1x authentication server (FreeRADIUS)
 - Will perform device compliance checks before network access
 - Will assign devices to the ZT segment upon successful authentication and compliance
+- Will implement network-level MFA for device authentication
 
 **Current State:**
 - [x] nftables firewall is configured to enforce Zero Trust segmentation and logging
 - [x] Network interface IP assignment is configured according to the ZT architecture
-- [ ] FreeRADIUS installation and configuration (pending)
-- [ ] Compliance check script (pending)
-- [ ] FreeRADIUS service management (pending)
+- [x] FreeRADIUS installation and configuration
+- [x] EAP-TLS configuration for secure authentication
+- [x] Certificate management (server.pem, server.key, ca.pem)
+- [x] FreeRADIUS service management
+- [x] Compliance check script
 - [ ] Integration of compliance check with FreeRADIUS authentication flow (pending)
+- [ ] Network-level MFA implementation:
+  - [ ] Additional verification methods for network access
+  - [ ] Integration with IAM MFA
+  - [ ] Device-based authentication factors
 - [ ] Automated network access revocation for non-compliant devices (pending)
 - [ ] Centralized logging and alerting for NAC events (pending)
 - [ ] Integration with network switches for dynamic VLAN assignment (802.1x enforcement) (pending)
@@ -42,6 +49,7 @@ Kali2: IAM, PEP, PDP (Access Control Core)
   - Handles user authentication and authorization (Keycloak is implemented)
   - Issues and manages authentication tokens
   - Maintains user and role database (test users are implemented)
+  - Implements primary MFA for all user authentication
 - **PEP (Policy Enforcement Point):**
   - Receives all access requests from users/devices (PEP client)
   - Forwards requests to the PEP server for policy enforcement
@@ -71,7 +79,11 @@ Kali2: IAM, PEP, PDP (Access Control Core)
 **Missing / To Do:**
 - [ ] Integration with NAC (Kali1) for real-time compliance status
 - [ ] Advanced anomaly detection and adaptive policy enforcement
-- [ ] Multi-factor authentication (MFA) integration
+- [ ] Multi-factor authentication (MFA) implementation:
+  - [ ] Keycloak MFA integration (TOTP/SMS/Email)
+  - [ ] Hardware token support
+  - [ ] Biometric authentication options
+  - [ ] MFA policy management
 - [ ] Automated session revocation on detected threats
 - [ ] Centralized dashboard for monitoring and policy management
 
@@ -82,6 +94,7 @@ Kali4: Protected Resource Service
 - Hosts the protected resources (e.g., student, teacher, warden, and admin data)
 - Exposes APIs for resource access, modification, and management
 - Enforces access control based on tokens and policies from Kali2
+- Implements resource-specific MFA for sensitive operations
 
 **Implemented:**
 - [x] Resource service API (CRUD for students, teachers, wardens, admins)
@@ -92,6 +105,10 @@ Kali4: Protected Resource Service
 **Missing / To Do:**
 - [ ] Fine-grained audit logging and alerting
 - [ ] Data encryption at rest and in transit
+- [ ] Resource-specific MFA implementation:
+  - [ ] Critical operation verification
+  - [ ] Sensitive data access protection
+  - [ ] Administrative action verification
 - [ ] Automated backup and disaster recovery
 - [ ] Integration with monitoring/alerting systems
 
@@ -139,7 +156,7 @@ General Security & Monitoring
 
 ❌ Authentication & Authorization
 -------------------------------
-- [ ] 802.1x protocol implementation
+- [x] 802.1x protocol implementation (EAP-TLS)
 - [ ] Secure socket proxy for authentication ticket updates
 - [ ] Single Packet Authorization (SPA) mode
 - [ ] OIDC & OAuth2.0 integration for SSO

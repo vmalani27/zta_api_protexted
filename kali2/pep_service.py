@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import requests
 from functools import lru_cache
 import os
@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 import httpx
 import datetime
 import logging
+from pydantic import BaseModel
+import time
+from fastapi.responses import JSONResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +23,29 @@ load_dotenv()
 app = FastAPI(title="PEP Service")
 security = HTTPBearer()
 
-class PEPMiddleware:
+# Models
+class Subject(BaseModel):
+    roles: list[str]
+    username: str
+    email: str
+
+class NonceRequest(BaseModel):
+    subject: Subject
+    timestamp: str
+
+class NonceResponse(BaseModel):
+    nonce: str
+    expires_at: int
+
+class SessionKeyRequest(BaseModel):
+    subject: Subject
+    nonce: str
+
+class SessionKeyResponse(BaseModel):
+    session_key: str
+    expires_at: int
+
+class PEP:
     def __init__(self):
         # Keycloak configuration - running locally on Kali2
         self.keycloak_host = os.getenv("KEYCLOAK_HOST", "http://localhost:8080")
@@ -46,6 +71,9 @@ class PEPMiddleware:
         # Timeout configuration
         self.resource_timeout = float(os.getenv("RESOURCE_TIMEOUT", "5.0"))  # 5 seconds timeout
         self.pdp_timeout = float(os.getenv("PDP_TIMEOUT", "3.0"))  # 3 seconds timeout
+
+        self.session_store: Dict[str, Dict] = {}
+        self.http_client = httpx.AsyncClient()
 
     @lru_cache(maxsize=1)
     def get_signing_key(self, token: str):
@@ -115,67 +143,114 @@ class PEPMiddleware:
             return True
         return False
 
-pep_middleware = PEPMiddleware()
+    async def get_nonce(self, request: NonceRequest) -> NonceResponse:
+        """
+        Request a nonce from PDP
+        """
+        async with self.http_client as client:
+            response = await client.post(f"{self.pdp_url}/nonce", json=request.dict())
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="Failed to get nonce")
+            return NonceResponse(**response.json())
+
+    async def get_session_key(self, request: SessionKeyRequest) -> SessionKeyResponse:
+        """
+        Request session keys from PDP after nonce validation
+        """
+        async with self.http_client as client:
+            response = await client.post(f"{self.pdp_url}/session-key", json=request.dict())
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="Failed to get session key")
+            return SessionKeyResponse(**response.json())
+
+    def validate_session(self, session_key: str) -> bool:
+        """
+        Validate if a session is still valid
+        """
+        if session_key not in self.session_store:
+            return False
+        
+        session = self.session_store[session_key]
+        if time.time() > session["expires_at"]:
+            del self.session_store[session_key]
+            return False
+            
+        return True
+
+pep_middleware = PEP()
 
 @app.middleware("http")
 async def pep_middleware_handler(request: Request, call_next):
-    # Skip PEP for health check endpoint
-    if request.url.path == "/health":
+    # Skip PEP for health check and auth endpoints
+    if request.url.path in ["/health", "/auth/nonce", "/auth/session", "/validate-session"]:
         return await call_next(request)
 
-    # Validate network access
-    if not pep_middleware.validate_network_access(request):
-        raise HTTPException(status_code=403, detail="Access denied: Not in allowed network")
+    try:
+        # Validate network access
+        if not pep_middleware.validate_network_access(request):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Access denied: Not in allowed network"}
+            )
 
-    # Get the authorization header
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No valid authorization header")
+        # Get the authorization header
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "No valid authorization header. Please authenticate first."}
+            )
 
-    # Extract and validate token
-    token = auth_header.split(" ")[1]
-    token_data = pep_middleware.validate_token(token)
+        # Extract and validate token
+        token = auth_header.split(" ")[1]
+        token_data = pep_middleware.validate_token(token)
 
-    # Determine resource and action from the request
-    resource = request.url.path.strip("/")
-    action = request.method.lower()
+        # Determine resource and action from the request
+        resource = request.url.path.strip("/")
+        action = request.method.lower()
 
-    # Consult PDP for policy decision
-    if not await pep_middleware.consult_pdp(token_data, resource, action):
-        raise HTTPException(
-            status_code=403,
-            detail="Access denied based on policy decision"
+        # Consult PDP for policy decision
+        if not await pep_middleware.consult_pdp(token_data, resource, action):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Access denied based on policy decision"}
+            )
+
+        # Forward the request to the resource service
+        async with httpx.AsyncClient(timeout=pep_middleware.resource_timeout) as client:
+            try:
+                # Forward the request to the resource service
+                response = await client.request(
+                    method=request.method,
+                    url=f"{pep_middleware.resource_service_url}{request.url.path}",
+                    headers=dict(request.headers),
+                    content=await request.body()
+                )
+                return response
+            except httpx.TimeoutException:
+                logger.error(f"Resource service timed out after {pep_middleware.resource_timeout} seconds")
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": f"Protected resource service timed out after {pep_middleware.resource_timeout} seconds"}
+                )
+            except httpx.ConnectError:
+                logger.error("Could not connect to resource service")
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Protected resource service is not running or unreachable"}
+                )
+            except httpx.RequestError as e:
+                logger.error(f"Error accessing resource service: {str(e)}")
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": f"Error accessing protected resource service: {str(e)}"}
+                )
+    except Exception as e:
+        logger.error(f"Unexpected error in PEP middleware: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error in PEP middleware"}
         )
-
-    # Forward the request to the resource service
-    async with httpx.AsyncClient(timeout=pep_middleware.resource_timeout) as client:
-        try:
-            # Forward the request to the resource service
-            response = await client.request(
-                method=request.method,
-                url=f"{pep_middleware.resource_service_url}{request.url.path}",
-                headers=dict(request.headers),
-                content=await request.body()
-            )
-            return response
-        except httpx.TimeoutException:
-            logger.error(f"Resource service timed out after {pep_middleware.resource_timeout} seconds")
-            raise HTTPException(
-                status_code=503,
-                detail=f"Protected resource service timed out after {pep_middleware.resource_timeout} seconds"
-            )
-        except httpx.ConnectError:
-            logger.error("Could not connect to resource service")
-            raise HTTPException(
-                status_code=503,
-                detail="Protected resource service is not running or unreachable"
-            )
-        except httpx.RequestError as e:
-            logger.error(f"Error accessing resource service: {str(e)}")
-            raise HTTPException(
-                status_code=503,
-                detail=f"Error accessing protected resource service: {str(e)}"
-            )
 
 @app.get("/health")
 async def health_check():
@@ -187,6 +262,35 @@ async def health_check():
         "keycloak": pep_middleware.keycloak_host,
         "pdp": pep_middleware.pdp_url
     }
+
+@app.post("/auth/nonce")
+async def request_nonce(request: NonceRequest):
+    """
+    Request a nonce for authentication
+    """
+    try:
+        return await pep_middleware.get_nonce(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/auth/session")
+async def request_session(request: SessionKeyRequest):
+    """
+    Request session keys after nonce validation
+    """
+    try:
+        return await pep_middleware.get_session_key(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/validate-session/{session_key}")
+async def validate_session(session_key: str):
+    """
+    Validate if a session is still valid
+    """
+    if not pep_middleware.validate_session(session_key):
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    return {"status": "valid"}
 
 if __name__ == "__main__":
     import uvicorn
