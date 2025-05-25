@@ -27,14 +27,6 @@ app = FastAPI(title="PEP Client API")
 class ComplianceCheckRequest(BaseModel):
     username: str
     password: str
-    device_id: str
-    ip_address: str
-    mac_address: str
-    os_type: str
-    os_version: str
-    antivirus_status: bool
-    firewall_status: bool
-    last_security_update: str
 
 class PEPAgent:
     def __init__(self):
@@ -48,6 +40,11 @@ class PEPAgent:
         self.pep_host = os.getenv("PEP_HOST", "localhost")
         self.pep_port = os.getenv("PEP_PORT", "5000")
         self.pep_endpoint = f"http://{self.pep_host}:{self.pep_port}"
+
+        # PDP service configuration
+        self.pdp_host = os.getenv("PDP_HOST", "localhost")
+        self.pdp_port = os.getenv("PDP_PORT", "5002")
+        self.pdp_endpoint = f"http://{self.pdp_host}:{self.pdp_port}"
 
         # Resource service configuration
         self.resource_host = os.getenv("RESOURCE_HOST", "192.168.200.4")
@@ -69,6 +66,39 @@ class PEPAgent:
         self.pep_connected = False
         logger.info("PEP Agent initialized")
 
+    def evaluate_policy(self, token: str) -> Tuple[bool, str]:
+        """Evaluate policy with PDP service"""
+        try:
+            logger.info("Sending policy evaluation request to PDP")
+            response = requests.post(
+                f"{self.pdp_endpoint}/evaluate",
+                json={
+                    "token": token,
+                    "resource": "protected-resource",
+                    "action": "access"
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("decision") == "allow":
+                    logger.info("Policy evaluation successful: Access allowed")
+                    return True, "Access allowed"
+                else:
+                    logger.warning("Policy evaluation failed: Access denied")
+                    return False, result.get("message", "Access denied")
+            else:
+                logger.error(f"Policy evaluation failed: {response.text}")
+                return False, "Policy evaluation failed"
+                
+        except requests.exceptions.ConnectionError:
+            logger.error("Failed to connect to PDP service")
+            return False, "PDP service is unreachable"
+        except Exception as e:
+            logger.error(f"Error during policy evaluation: {str(e)}")
+            return False, str(e)
+
     def connect_to_pep(self) -> bool:
         """Establish connection with PEP server"""
         try:
@@ -77,7 +107,10 @@ class PEPAgent:
             self.pep_connected = True
             logger.info(f"Connected to PEP server at {self.pep_endpoint}")
             return True
-        except Exception as e:
+        except requests.exceptions.ConnectionError:
+            logger.error(f"Failed to connect to PEP server: Connection refused")
+            return False
+        except requests.exceptions.RequestException as e:
             logger.error(f"Failed to connect to PEP server: {str(e)}")
             self.pep_connected = False
             return False
@@ -104,7 +137,13 @@ class PEPAgent:
             logger.info("Sending authentication request to Keycloak")
             resp = requests.post(token_url, data=data)
 
-            if resp.status_code in (400, 401, 403):
+            if resp.status_code == 401:
+                logger.error("Authentication failed: Invalid credentials")
+                return False, "Invalid username or password"
+            elif resp.status_code == 403:
+                logger.error("Authentication failed: Access denied")
+                return False, "Access denied"
+            elif resp.status_code == 400:
                 error = resp.json().get("error_description", "Authentication failed")
                 logger.error(f"Authentication failed: {error}")
                 return False, error
@@ -131,9 +170,15 @@ class PEPAgent:
                 
             return True, "Login successful"
             
-        except Exception as e:
+        except requests.exceptions.ConnectionError:
+            logger.error("Failed to connect to Keycloak server")
+            return False, "Keycloak server is unreachable"
+        except requests.exceptions.RequestException as e:
             logger.error(f"Login failed: {str(e)}")
             return False, str(e)
+        except Exception as e:
+            logger.error(f"Unexpected error during login: {str(e)}")
+            return False, "An unexpected error occurred"
 
     def verify_pep_connection(self) -> bool:
         """Verify PEP connection with current token"""
@@ -417,36 +462,41 @@ async def handle_compliance_check(request: ComplianceCheckRequest):
         success, message = pep_agent.capture_login_request(request.username, request.password)
         
         if not success:
-            raise HTTPException(status_code=401, detail=f"Authentication failed: {message}")
+            if "Invalid username or password" in message:
+                raise HTTPException(status_code=401, detail=message)
+            elif "Access denied" in message:
+                raise HTTPException(status_code=403, detail=message)
+            elif "Keycloak server is unreachable" in message:
+                raise HTTPException(status_code=503, detail=message)
+            else:
+                raise HTTPException(status_code=500, detail=message)
             
         # Verify PEP connection
         if not pep_agent.verify_pep_connection():
             raise HTTPException(status_code=503, detail="PEP service unavailable")
+
+        # Get token for policy evaluation
+        token = pep_agent.get_token()
+        if not token:
+            raise HTTPException(status_code=500, detail="Failed to get access token")
+
+        # Evaluate policy with PDP
+        policy_success, policy_message = pep_agent.evaluate_policy(token)
+        if not policy_success:
+            raise HTTPException(status_code=403, detail=policy_message)
             
-        # Store device information for future reference
-        device_info = {
-            "device_id": request.device_id,
-            "ip_address": request.ip_address,
-            "mac_address": request.mac_address,
-            "os_type": request.os_type,
-            "os_version": request.os_version,
-            "antivirus_status": request.antivirus_status,
-            "firewall_status": request.firewall_status,
-            "last_security_update": request.last_security_update
-        }
-        
-        # You might want to store this information in a database or cache
-        logger.info(f"Device information stored for user {request.username}")
-        
         return {
             "status": "success",
-            "message": "Compliance check passed and user authenticated",
-            "token": pep_agent.get_token()
+            "message": "Authentication and policy evaluation successful",
+            "token": token
         }
         
+    except HTTPException as he:
+        # Re-raise HTTP exceptions as they're already properly formatted
+        raise he
     except Exception as e:
         logger.error(f"Error processing compliance check: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 def start_api_server():
     """Start the FastAPI server"""

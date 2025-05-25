@@ -58,27 +58,26 @@ collect_user_credentials() {
 
 # Function to send data to PEP client
 send_to_pep_client() {
+    # Create JSON data with only username and password
     local json_data=$(cat <<EOF
 {
-    "username": "$username",
-    "password": "$password",
-    "device_id": "$device_id",
-    "ip_address": "$ip_address",
-    "mac_address": "$mac_address",
-    "os_type": "$os_type",
-    "os_version": "$os_version",
-    "antivirus_status": $([ "$antivirus_status" = "yes" ] && echo "true" || echo "false"),
-    "firewall_status": $([ "$firewall_status" = "yes" ] && echo "true" || echo "false"),
-    "last_security_update": "$last_security_update"
+    "username": "${username}",
+    "password": "${password}"
 }
 EOF
 )
+
+    # Debug: Print JSON to verify it's correct
+    echo "Sending JSON data:"
+    echo "$json_data"
 
     # Send data to PEP client
     response=$(curl -s -X POST \
         -H "Content-Type: application/json" \
         -d "$json_data" \
-        http://kali2:5000/compliance-check)
+        http://192.168.200.2:5000/compliance-check)
+
+    echo "Response from PEP: $response"
 
     # Check response
     if echo "$response" | grep -q '"status":"success"'; then
@@ -101,6 +100,7 @@ main() {
     collect_user_credentials
     
     # Log collected information
+    log_message "=== Device Information ==="
     log_message "Device ID: $device_id"
     log_message "IP Address: $ip_address"
     log_message "MAC Address: $mac_address"
@@ -108,6 +108,7 @@ main() {
     log_message "Antivirus: $antivirus_status"
     log_message "Firewall: $firewall_status"
     log_message "Last Security Update: $last_security_update"
+    log_message "=== End Device Information ==="
     
     # For now, just output device is compliant
     log_message "Device is compliant"
