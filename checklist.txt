@@ -21,7 +21,7 @@ Kali1: Network Access Control (NAC)
 - Will act as the 802.1x authentication server (FreeRADIUS)
 - Will perform device compliance checks before network access
 - Will assign devices to the ZT segment upon successful authentication and compliance
-- Will implement network-level MFA for device authentication
+- Will enforce threat-based access control and remediation
 
 **Current State:**
 - [x] nftables firewall is configured to enforce Zero Trust segmentation and logging
@@ -30,16 +30,71 @@ Kali1: Network Access Control (NAC)
 - [x] EAP-TLS configuration for secure authentication
 - [x] Certificate management (server.pem, server.key, ca.pem)
 - [x] FreeRADIUS service management
-- [x] Compliance check script
-- [ ] Integration of compliance check with FreeRADIUS authentication flow (pending)
-- [ ] Network-level MFA implementation:
-  - [ ] Additional verification methods for network access
-  - [ ] Integration with IAM MFA
-  - [ ] Device-based authentication factors
-- [ ] Automated network access revocation for non-compliant devices (pending)
+- [x] Compliance check script with basic logging:
+  - [x] System update status
+  - [x] Antivirus status
+  - [x] Basic compliance decision
+- [ ] Enhanced compliance system:
+  - [ ] Device scoring system (0-100):
+    - [ ] System updates (20 points)
+    - [ ] Antivirus status (20 points)
+    - [ ] Firewall configuration (15 points)
+    - [ ] Security services (15 points)
+    - [ ] User privileges (15 points)
+    - [ ] Network security (15 points)
+  - [ ] Threat level analysis:
+    - [ ] Low threat (score 80-100): Full access
+    - [ ] Medium threat (score 50-79): Limited access with remediation
+    - [ ] High threat (score 0-49): Access denied
+  - [ ] Retry mechanism:
+    - [ ] 3 attempts for remediation
+    - [ ] User guidance for fixes
+    - [ ] Automatic re-evaluation
+    - [ ] Permanent revocation after 3 failed attempts
+  - [ ] Enhanced device information logging:
+    - [ ] Device hardware information
+    - [ ] Operating system details
+    - [ ] Installed security software
+    - [ ] Network configuration
+    - [ ] User session information
+    - [ ] Historical compliance status
+    - [ ] Security patch level
+    - [ ] Device trust score
+- [x] Integration of compliance check with FreeRADIUS authentication flow
+- [x] Authentication flow implementation:
+  - [x] nftables initial packet filtering
+  - [x] FreeRADIUS authentication processing
+  - [x] Compliance script verification
+  - [x] Final access decision (accept/reject)
+- [ ] Threat-based access control implementation:
+  - [ ] Low-threat quarantine:
+    - [ ] Temporary network access restrictions
+    - [ ] Remediation guidance for users
+    - [ ] Automatic re-evaluation after fixes
+  - [ ] Medium-threat isolation:
+    - [ ] Limited network access to remediation resources
+    - [ ] Mandatory security updates
+    - [ ] Extended monitoring period
+  - [ ] High-threat revocation:
+    - [ ] Permanent access revocation
+    - [ ] Manual intervention required
+    - [ ] Security team notification
+  - [ ] Threat level assessment system
+  - [ ] Automated remediation workflows
+  - [ ] User notification system
 - [ ] Centralized logging and alerting for NAC events (pending)
 - [ ] Integration with network switches for dynamic VLAN assignment (802.1x enforcement) (pending)
 - [ ] Automated backup and recovery procedures (pending)
+
+**Implemented Features:**
+- Complete authentication flow:
+  1. Initial nftables packet filtering
+  2. FreeRADIUS authentication processing
+  3. Compliance script verification
+  4. Final access decision (accept/reject)
+- Test user authentication via radtest
+- Automated compliance verification
+- Accept/reject messaging based on compliance status
 
 
 Kali2: IAM, PEP, PDP (Access Control Core)
@@ -50,14 +105,17 @@ Kali2: IAM, PEP, PDP (Access Control Core)
   - Issues and manages authentication tokens
   - Maintains user and role database (test users are implemented)
   - Implements primary MFA for all user authentication
+  - Manages MFA policies and enforcement
 - **PEP (Policy Enforcement Point):**
   - Receives all access requests from users/devices (PEP client)
   - Forwards requests to the PEP server for policy enforcement
   - Validates authentication tokens and session state
+  - Enforces MFA requirements for sensitive operations
 - **PDP (Policy Decision Point):**
   - Evaluates access requests against defined security policies
   - Makes allow/deny decisions based on user, device, context, and compliance status
   - Returns policy decisions to the PEP for enforcement
+  - Considers MFA status in policy decisions
 
 **How PEP Client, IAM, PEP Server, and PDP Work Together:**
 1. **PEP Client** (on user device) sends an access request with credentials/token to the **PEP Server** (Kali2).
@@ -80,10 +138,19 @@ Kali2: IAM, PEP, PDP (Access Control Core)
 - [ ] Integration with NAC (Kali1) for real-time compliance status
 - [ ] Advanced anomaly detection and adaptive policy enforcement
 - [ ] Multi-factor authentication (MFA) implementation:
-  - [ ] Keycloak MFA integration (TOTP/SMS/Email)
-  - [ ] Hardware token support
-  - [ ] Biometric authentication options
-  - [ ] MFA policy management
+  - [ ] Primary MFA in IAM (Keycloak):
+    - [ ] TOTP implementation
+    - [ ] SMS/Email verification
+    - [ ] Hardware token support
+    - [ ] Biometric authentication options
+  - [ ] MFA Policy Management:
+    - [ ] Risk-based MFA requirements
+    - [ ] Device trust scoring
+    - [ ] Context-aware authentication
+  - [ ] MFA Integration Points:
+    - [ ] Integration with NAC (Kali1) for device-level MFA
+    - [ ] Integration with Protected Resources (Kali4) for resource-specific MFA
+    - [ ] Integration with network switches for 802.1x MFA
 - [ ] Automated session revocation on detected threats
 - [ ] Centralized dashboard for monitoring and policy management
 
@@ -150,7 +217,14 @@ General Security & Monitoring
 ❌ Distributed Firewall Features
 ------------------------------
 - [ ] Device compliance checks at firewall level
-- [ ] Ingress filtering implementation
+- [ ] Ingress filtering implementation:
+  - [ ] Source IP validation
+  - [ ] Packet header inspection
+  - [ ] Protocol validation
+  - [ ] Rate limiting
+  - [ ] DDoS protection
+  - [ ] Traffic pattern analysis
+  - [ ] Connection state tracking
 - [ ] Network anomaly detection at firewall level
 - [ ] Firewall logging for authentication requests
 
@@ -161,16 +235,16 @@ General Security & Monitoring
 - [ ] Single Packet Authorization (SPA) mode
 - [ ] OIDC & OAuth2.0 integration for SSO
 
-❌ User and Device Verification
+✅ User and Device Verification
 -----------------------------
-- [ ] Device log collection system
-- [ ] Security baseline verification
-- [ ] User activity monitoring
-- [ ] Automatic screen lock verification
-- [ ] SSH login status monitoring
-- [ ] Firewall settings verification
-- [ ] Antivirus status checking
-- [ ] Network change detection
+- [x] Device log collection system
+- [x] Security baseline verification
+- [x] User activity monitoring
+- [x] Automatic screen lock verification
+- [x] SSH login status monitoring
+- [x] Firewall settings verification
+- [x] Antivirus status checking
+- [x] Network change detection
 
 ❌ Continuous Monitoring
 -----------------------
