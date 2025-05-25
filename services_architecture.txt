@@ -1,0 +1,55 @@
+Zero Trust Architecture Services Overview
+=====================================
+
+Kali1 (Initial Access & Network Compliance)
+------------------------------------------
+1. FreeRADIUS Server
+   - Handles initial network authentication
+   - Validates user credentials
+   - Manages network access policies
+
+2. NFTables Monitoring
+   - Monitors network traffic
+   - Enforces network policies
+   - Controls traffic flow based on compliance
+
+Flow: If compliance passes and user is accepted, request moves to Kali2
+
+Kali2 (Authentication & Authorization)
+-------------------------------------
+1. PEP Client
+   - Initiates authentication process
+   - Handles user credentials
+   - Manages session tokens
+
+2. PEP Service (Policy Enforcement Point)
+   - Enforces access policies
+   - Validates user sessions
+   - Manages access control decisions
+
+3. PDP Service (Policy Decision Point)
+   - Makes authorization decisions
+   - Evaluates access policies
+   - Determines resource access permissions
+
+4. Keycloak
+   - Provides identity and access management
+   - Handles user authentication
+   - Manages user roles and permissions
+
+Flow: After successful authentication, PEP service redirects to protected resource
+
+Kali4 (Protected Resources)
+--------------------------
+1. Protected Resource Service
+   - Hosts the actual protected application/data
+   - Enforces final access control
+   - Serves content to authorized users
+
+Service Dependencies
+-------------------
+1. Kali1 services must be running first for initial access
+2. Kali2 services must be operational for authentication
+3. Kali4 service must be available for resource access
+
+Note: All services must be running in the correct order for the architecture to function properly. 

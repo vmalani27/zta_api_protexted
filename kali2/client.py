@@ -10,6 +10,9 @@ import time
 import getpass
 import httpx
 import json
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import uvicorn
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -17,6 +20,21 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
+
+# FastAPI app initialization
+app = FastAPI(title="PEP Client API")
+
+class ComplianceCheckRequest(BaseModel):
+    username: str
+    password: str
+    device_id: str
+    ip_address: str
+    mac_address: str
+    os_type: str
+    os_version: str
+    antivirus_status: bool
+    firewall_status: bool
+    last_security_update: str
 
 class PEPAgent:
     def __init__(self):
@@ -385,56 +403,58 @@ class ZTAClient:
             logger.error(f"Error making authenticated request: {str(e)}")
             return None
 
-def main():
+# Initialize PEP agent
+pep_agent = PEPAgent()
+
+@app.post("/compliance-check")
+async def handle_compliance_check(request: ComplianceCheckRequest):
+    """Handle compliance check requests from Kali1"""
     try:
-        # Initialize PEP agent
-        agent = PEPAgent()
-        agent.initialize_jwks()  # Initialize JWKS client first
+        # Log the received request
+        logger.info(f"Received compliance check request for user: {request.username}")
         
-        # Get user credentials
-        username = input("Username: ")
-        password = getpass.getpass("Password: ")
+        # Attempt to authenticate with Keycloak
+        success, message = pep_agent.capture_login_request(request.username, request.password)
         
-        # Capture and process login request
-        success, message = agent.capture_login_request(username, password)
         if not success:
-            logger.error(f"Login failed: {message}")
-            return
+            raise HTTPException(status_code=401, detail=f"Authentication failed: {message}")
             
-        # Get and validate token
-        token = agent.get_token()
-        if not token:
-            logger.error("No valid token available")
-            return
+        # Verify PEP connection
+        if not pep_agent.verify_pep_connection():
+            raise HTTPException(status_code=503, detail="PEP service unavailable")
             
-        try:
-            token_data = agent.validate_token(token)
-            
-            # Display welcome message based on primary role
-            if agent.has_role('admin'):
-                print("\nWelcome, Administrator!")
-            elif agent.has_role('Teacher'):
-                print("\nWelcome, Teacher!")
-            elif agent.has_role('Student'):
-                print("\nWelcome, Student!")
-            elif agent.has_role('Warden'):
-                print("\nWelcome, Warden!")
-            else:
-                print("\nWelcome!")
-            
-            # Test PEP connection
-            if agent.verify_pep_connection():
-                print("Connected to PEP server successfully!")
-            else:
-                print("Warning: PEP connection verification failed")
-                
-        except Exception as e:
-            logger.error(f"Token validation failed: {str(e)}")
-            return
-            
+        # Store device information for future reference
+        device_info = {
+            "device_id": request.device_id,
+            "ip_address": request.ip_address,
+            "mac_address": request.mac_address,
+            "os_type": request.os_type,
+            "os_version": request.os_version,
+            "antivirus_status": request.antivirus_status,
+            "firewall_status": request.firewall_status,
+            "last_security_update": request.last_security_update
+        }
+        
+        # You might want to store this information in a database or cache
+        logger.info(f"Device information stored for user {request.username}")
+        
+        return {
+            "status": "success",
+            "message": "Compliance check passed and user authenticated",
+            "token": pep_agent.get_token()
+        }
+        
     except Exception as e:
-        logger.error(f"Error in main execution: {str(e)}")
-        raise
+        logger.error(f"Error processing compliance check: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def start_api_server():
+    """Start the FastAPI server"""
+    uvicorn.run(app, host="0.0.0.0", port=5000)
 
 if __name__ == "__main__":
-    main()
+    # Initialize JWKS client
+    pep_agent.initialize_jwks()
+    
+    # Start the FastAPI server
+    start_api_server()
