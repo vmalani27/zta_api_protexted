@@ -34,57 +34,57 @@ Kali1: Network Access Control (NAC)
   - [x] System update status
   - [x] Antivirus status
   - [x] Basic compliance decision
-- [ ] Enhanced compliance system:
-  - [ ] Device scoring system (0-100):
-    - [ ] System updates (20 points)
-    - [ ] Antivirus status (20 points)
-    - [ ] Firewall configuration (15 points)
-    - [ ] Security services (15 points)
-    - [ ] User privileges (15 points)
-    - [ ] Network security (15 points)
-  - [ ] Threat level analysis:
-    - [ ] Low threat (score 80-100): Full access
-    - [ ] Medium threat (score 50-79): Limited access with remediation
-    - [ ] High threat (score 0-49): Access denied
-  - [ ] Retry mechanism:
-    - [ ] 3 attempts for remediation
-    - [ ] User guidance for fixes
-    - [ ] Automatic re-evaluation
-    - [ ] Permanent revocation after 3 failed attempts
-  - [ ] Enhanced device information logging:
-    - [ ] Device hardware information
-    - [ ] Operating system details
-    - [ ] Installed security software
-    - [ ] Network configuration
-    - [ ] User session information
-    - [ ] Historical compliance status
-    - [ ] Security patch level
-    - [ ] Device trust score
+- [x] Enhanced compliance system:
+  - [x] Device scoring system (0-100):
+    - [x] System updates (20 points)
+    - [x] Antivirus status (20 points)
+    - [x] Firewall configuration (15 points)
+    - [x] Security services (15 points)
+    - [x] User privileges (15 points)
+    - [x] Network security (15 points)
+  - [x] Threat level analysis:
+    - [x] Low threat (score 80-100): Full access
+    - [x] Medium threat (score 50-79): Limited access with remediation
+    - [x] High threat (score 0-49): Access denied
+  - [x] Retry mechanism:
+    - [x] 3 attempts for remediation
+    - [x] User guidance for fixes
+    - [x] Automatic re-evaluation
+    - [x] Permanent revocation after 3 failed attempts
+  - [x] Enhanced device information logging:
+    - [x] Device hardware information
+    - [x] Operating system details
+    - [x] Installed security software
+    - [x] Network configuration
+    - [x] User session information
+    - [x] Historical compliance status
+    - [x] Security patch level
+    - [x] Device trust score
 - [x] Integration of compliance check with FreeRADIUS authentication flow
 - [x] Authentication flow implementation:
   - [x] nftables initial packet filtering
   - [x] FreeRADIUS authentication processing
   - [x] Compliance script verification
   - [x] Final access decision (accept/reject)
-- [ ] Threat-based access control implementation:
-  - [ ] Low-threat quarantine:
-    - [ ] Temporary network access restrictions
-    - [ ] Remediation guidance for users
-    - [ ] Automatic re-evaluation after fixes
-  - [ ] Medium-threat isolation:
-    - [ ] Limited network access to remediation resources
-    - [ ] Mandatory security updates
-    - [ ] Extended monitoring period
-  - [ ] High-threat revocation:
-    - [ ] Permanent access revocation
-    - [ ] Manual intervention required
-    - [ ] Security team notification
-  - [ ] Threat level assessment system
-  - [ ] Automated remediation workflows
-  - [ ] User notification system
-- [ ] Centralized logging and alerting for NAC events (pending)
-- [ ] Integration with network switches for dynamic VLAN assignment (802.1x enforcement) (pending)
-- [ ] Automated backup and recovery procedures (pending)
+- [x] Threat-based access control implementation:
+  - [x] Low-threat quarantine:
+    - [x] Temporary network access restrictions
+    - [x] Remediation guidance for users
+    - [x] Automatic re-evaluation after fixes
+  - [x] Medium-threat isolation:
+    - [x] Limited network access to remediation resources
+    - [x] Mandatory security updates
+    - [x] Extended monitoring period
+  - [x] High-threat revocation:
+    - [x] Permanent access revocation
+    - [x] Manual intervention required
+    - [x] Security team notification
+  - [x] Threat level assessment system
+  - [x] Automated remediation workflows
+  - [x] User notification system
+- [x] Centralized logging and alerting for NAC events
+- [x] Integration with network switches for dynamic VLAN assignment (802.1x enforcement)
+- [x] Automated backup and recovery procedures
 
 **Implemented Features:**
 - Complete authentication flow:
@@ -95,6 +95,11 @@ Kali1: Network Access Control (NAC)
 - Test user authentication via radtest
 - Automated compliance verification
 - Accept/reject messaging based on compliance status
+- Enhanced device scoring and threat analysis
+- Automated remediation workflows
+- Centralized logging and monitoring
+- Dynamic VLAN assignment
+- Backup and recovery procedures
 
 
 Kali2: IAM, PEP, PDP (Access Control Core)

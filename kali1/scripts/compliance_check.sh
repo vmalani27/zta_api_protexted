@@ -39,11 +39,26 @@ add_score() {
 if command -v apt >/dev/null 2>&1; then
     echo "$(date) - Checking for pending updates..." >> "$LOG_FILE"
     updates=$(apt list --upgradeable 2>/dev/null | grep -v "Listing..." | wc -l)
+    
     if [ "$updates" -eq 0 ]; then
         add_score 20 "System is up to date"
-    else
-        echo "$(date) - Pending updates detected: $updates" >> "$LOG_FILE"
+    elif [ "$updates" -le 10 ]; then
+        add_score 15 "System has minor updates pending ($updates updates)"
         echo "Please run: sudo apt update && sudo apt upgrade"
+    elif [ "$updates" -le 50 ]; then
+        add_score 10 "System has moderate updates pending ($updates updates)"
+        echo "Please run: sudo apt update && sudo apt upgrade"
+    elif [ "$updates" -le 100 ]; then
+        add_score 5 "System has significant updates pending ($updates updates)"
+        echo "Please run: sudo apt update && sudo apt upgrade"
+    elif [ "$updates" -le 500 ]; then
+        add_score 0 "System has critical updates pending ($updates updates)"
+        echo "Please run: sudo apt update && sudo apt upgrade immediately"
+    else
+        echo "$(date) - CRITICAL: System has excessive updates pending ($updates updates)" >> "$LOG_FILE"
+        echo "System has too many pending updates. Access denied until updates are applied."
+        echo "Please run: sudo apt update && sudo apt upgrade"
+        exit 1  # Exit with failure for excessive updates
     fi
 else
     echo "$(date) - APT not found, skipping update check" >> "$LOG_FILE"
@@ -51,11 +66,11 @@ fi
 
 # 2. Check ClamAV (20 points)
 if systemctl is-active --quiet clamav-freshclam && systemctl is-active --quiet clamav-daemon; then
-    add_score 20 "Antivirus is running"
+    echo "Both ClamAV services are running."
 else
-    echo "$(date) - ClamAV is not running or not installed" >> "$LOG_FILE"
-    echo "Please install and start ClamAV: sudo apt install clamav clamav-daemon"
+    echo "One or both ClamAV services are NOT running."
 fi
+
 
 # 3. Check firewall configuration (15 points)
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then

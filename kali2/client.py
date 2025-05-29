@@ -38,23 +38,35 @@ class ComplianceRequest(BaseModel):
 class Client:
     def __init__(self):
         # Keycloak configuration
-        self.keycloak_url = "http://192.168.200.2:8080"
-        self.realm = "zta"
+        self.keycloak_host = os.getenv("KEYCLOAK_HOST", "192.168.200.2")
+        self.keycloak_port = os.getenv("KEYCLOAK_PORT", "8080")
+        self.keycloak_url = f"http://{self.keycloak_host}:{self.keycloak_port}"
+        self.realm = os.getenv("REALM", "zta")
         self.client_id = os.getenv("CLIENT_ID", "pep-backend")
         self.client_secret = os.getenv("CLIENT_SECRET", "1234567890")
         
         # PEP service configuration
-        self.pep_host = "192.168.200.2"
-        self.pep_port = "5000"
+        self.pep_host = os.getenv("PEP_HOST", "192.168.200.2")
+        self.pep_port = os.getenv("PEP_PORT", "5000")
         self.pep_endpoint = f"http://{self.pep_host}:{self.pep_port}"
+        
+        # Network configuration
+        self.zt_segment = os.getenv("ZT_SEGMENT", "zt_segment")
+        self.allowed_networks = os.getenv("ALLOWED_NETWORKS", "intranet,zt_segment").split(",")
+        
+        # Timeout configuration
+        self.request_timeout = float(os.getenv("REQUEST_TIMEOUT", "5.0"))  # 5 seconds timeout
         
         # Initialize JWKS client
         self.jwks_client = PyJWKClient(f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/certs")
         
         logger.info(f"Client initialized with Keycloak URL: {self.keycloak_url}")
+        logger.info(f"PEP endpoint: {self.pep_endpoint}")
+        logger.info(f"ZT segment: {self.zt_segment}")
 
     def generate_nonce(self) -> str:
         """Generate a new nonce"""
+        
         return secrets.token_urlsafe(32)
 
     def validate_nonce(self, nonce: str, client_ip: str) -> bool:
@@ -167,11 +179,12 @@ async def compliance_check(request: ComplianceRequest, req: Request):
 
 def main():
     # Get host and port from environment or use defaults
-    host = "0.0.0.0"
-    port = 5000
+    host = os.getenv("CLIENT_HOST", "0.0.0.0")
+    port = int(os.getenv("CLIENT_PORT", "5000"))
     
     # Start FastAPI server
     logger.info(f"Starting server on {host}:{port}")
+    logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     uvicorn.run(app, host=host, port=port)
 
 if __name__ == "__main__":

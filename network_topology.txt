@@ -32,6 +32,10 @@ Network Topology for ZT Architecture VMs
   - eth1: 192.168.200.3 (ZT Segment)
   - eth2: 192.168.100.3 (Intranet)
 
+- kali4:
+  - eth0: DHCP or static (Internet)
+  - eth1: 192.168.200.4 (ZT Segment)
+  - eth2: 192.168.100.4 (Intranet)
 # Note:
 - The last octet of the IP address matches the VM number for both ZT and Intranet segments.
 - This structure helps in easy identification and management of VMs in the network. 
