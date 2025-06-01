@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  postgresql:
+    image: docker.io/bitnami/postgresql:16
+    environment:
+      - POSTGRESQL_USERNAME=bn_keycloak
+      - POSTGRESQL_PASSWORD=bitnami1234
+      - POSTGRESQL_DATABASE=bitnami_keycloak
+    volumes:
+      - postgresql_data:/bitnami/postgresql
+    networks:
+      - keycloak-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bn_keycloak -d bitnami_keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: docker.io/bitnami/keycloak:24
+    environment:
+      - KEYCLOAK_DATABASE_HOST=postgresql
+      - KEYCLOAK_DATABASE_PORT=5432
+      - KEYCLOAK_DATABASE_NAME=bitnami_keycloak
+      - KEYCLOAK_DATABASE_USER=bn_keycloak
+      - KEYCLOAK_DATABASE_PASSWORD=bitnami1234
+      - KEYCLOAK_ADMIN_USER=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin123
+      - KEYCLOAK_HTTP_PORT=8080
+      - KEYCLOAK_HTTPS_PORT=8443
+      - KEYCLOAK_PROXY=edge
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - ./keycloak-data:/opt/bitnami/keycloak/data
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    networks:
+      - keycloak-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  keycloak-network:
+    driver: bridge
+
+volumes:
+  postgresql_data:
+    driver: local 

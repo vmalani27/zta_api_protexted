@@ -1,0 +1,27 @@
+{
+  "realm" : "master",
+  "users" : [ {
+    "id" : "1af61606-b97f-4174-a892-e1fb84b460c7",
+    "username" : "sys1",
+    "firstName" : "sys",
+    "lastName" : "sys",
+    "email" : "sys@email.com",
+    "emailVerified" : false,
+    "createdTimestamp" : 1747119976404,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "ddd5c699-108d-4257-b0ea-0673a3be206a",
+      "type" : "password",
+      "userLabel" : "My password",
+      "createdDate" : 1747120104249,
+      "secretData" : "{\"value\":\"BWMwoCgynJT02HMmcinFRE/cLb0GcFV3EHMxsuCXXvQ=\",\"salt\":\"LQtmPLxrcOxn+UAuLtk0eg==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "admin", "offline_access", "default-roles-master", "uma_authorization", "create-realm" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  } ]
+}

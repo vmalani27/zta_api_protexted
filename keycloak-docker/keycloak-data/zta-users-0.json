@@ -1,0 +1,188 @@
+{
+  "realm" : "zta",
+  "users" : [ {
+    "id" : "20f438c0-cc3b-4aeb-8418-1d44987f1d93",
+    "username" : "dhavalzta",
+    "firstName" : "dhaval",
+    "lastName" : "agnani",
+    "email" : "dhaval@email.com",
+    "emailVerified" : false,
+    "createdTimestamp" : 1747286130277,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "5c3e9cf6-e36b-4905-a452-f1860eed8d91",
+      "type" : "password",
+      "userLabel" : "My password",
+      "createdDate" : 1747288156966,
+      "secretData" : "{\"value\":\"wU/NvuQavi2MCMw5zvRK9oSpYSRFFgL2WM4MqfWyyPE=\",\"salt\":\"Mxok6vTqbMQaLBvtY/nfIA==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "admin", "default-roles-zta" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
+    "id" : "f8f12893-b00c-4491-831a-cafb92e5058e",
+    "username" : "service-account-pep-backend",
+    "emailVerified" : false,
+    "createdTimestamp" : 1747283143082,
+    "enabled" : true,
+    "totp" : false,
+    "serviceAccountClientId" : "pep-backend",
+    "credentials" : [ ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "Warden", "admin", "Student", "Teacher", "default-roles-zta" ],
+    "clientRoles" : {
+      "pep-backend" : [ "uma_protection" ]
+    },
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
+    "id" : "b0f9010d-eba2-405f-ae5f-d0a885f53d7c",
+    "username" : "student1",
+    "firstName" : "student",
+    "lastName" : "patel",
+    "email" : "student1@email.com",
+    "emailVerified" : false,
+    "createdTimestamp" : 1747821285418,
+    "enabled" : true,
+    "totp" : true,
+    "credentials" : [ {
+      "id" : "32763f20-1f0c-4186-a3b8-d68a834300fd",
+      "type" : "password",
+      "userLabel" : "My password",
+      "createdDate" : 1747821319728,
+      "secretData" : "{\"value\":\"ZqLCzNNMAFQOfeh+vMniLZkkNbWOLus5r2JWVWTokrA=\",\"salt\":\"C5Ew6Ho/JyZ3TvvFikXixA==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+    }, {
+      "id" : "7e34bc5e-3106-4d3e-8fa4-d75f9878bde2",
+      "type" : "otp",
+      "userLabel" : "vansh",
+      "createdDate" : 1748336155670,
+      "secretData" : "{\"value\":\"2jjIcUMxIb9O1DeBOQRM\"}",
+      "credentialData" : "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "Student", "default-roles-zta" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
+    "id" : "bb25be81-6a01-40cc-a3fe-b7d07f6c5f7b",
+    "username" : "student2",
+    "firstName" : "student2",
+    "lastName" : "patel",
+    "email" : "student2@email.com",
+    "emailVerified" : false,
+    "createdTimestamp" : 1747821715134,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "96e455ca-a432-4912-8f8d-9597d36cd5e1",
+      "type" : "password",
+      "userLabel" : "My password",
+      "createdDate" : 1747821741160,
+      "secretData" : "{\"value\":\"L+NCwAMftFOSLDzUYW0AleTUckIb6WQlmX/VztLQ3Ts=\",\"salt\":\"Am91Zfa7Cvzuej9EvewPlA==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "Student", "default-roles-zta" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
+    "id" : "a1ae2af0-a0c7-4c08-a620-aca842ff12a1",
+    "username" : "sys",
+    "firstName" : "sys",
+    "lastName" : "sys",
+    "email" : "sys@email.com",
+    "emailVerified" : false,
+    "createdTimestamp" : 1747120810641,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "9cc6c9b6-0c14-4552-93a2-c3b5d2ff95e3",
+      "type" : "password",
+      "userLabel" : "My password",
+      "createdDate" : 1747120833786,
+      "secretData" : "{\"value\":\"04KUfWyyOAES+clA0AiMWpW27SaCMyCjTJr/tvBijTQ=\",\"salt\":\"SfeoyeOtfIlW6g5U8Kh5mQ==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "uma_authorization", "offline_access", "default-roles-zta" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
+    "id" : "0ffee1d6-d290-4f1f-9dda-815205179f13",
+    "username" : "teacher1",
+    "firstName" : "teacher1",
+    "lastName" : "patel",
+    "email" : "teacher1@email.com",
+    "emailVerified" : false,
+    "createdTimestamp" : 1747814570923,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "d77c00fd-14a0-42e3-a395-42e36defb79c",
+      "type" : "password",
+      "userLabel" : "My password",
+      "createdDate" : 1747814618236,
+      "secretData" : "{\"value\":\"ts1VACej+IQo21C2C+wex0Mxke538E/CI8iib2/U264=\",\"salt\":\"qeS47lEAEwB66atG/sClmA==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "Teacher", "default-roles-zta" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
+    "id" : "cb5804c5-2336-4c19-be86-3dc242fb5a97",
+    "username" : "teacher2",
+    "firstName" : "teacher2",
+    "lastName" : "patel",
+    "email" : "teacher2@email.com",
+    "emailVerified" : false,
+    "createdTimestamp" : 1747821233658,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "e8adb8a4-4ab8-4250-a8c3-c0a5f7183bc9",
+      "type" : "password",
+      "userLabel" : "My password",
+      "createdDate" : 1747821248728,
+      "secretData" : "{\"value\":\"doiKLJupyLwQQKONFYJDLbslOrljR++0Q3PMIivnSC4=\",\"salt\":\"FkjLDDsfdPp3oPuLRJb/dg==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "Teacher", "default-roles-zta" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
+    "id" : "309c437b-cabc-4f20-918c-32c28897f8c2",
+    "username" : "warden1",
+    "firstName" : "warden1",
+    "lastName" : "patel",
+    "email" : "warden1@gmail.com",
+    "emailVerified" : false,
+    "createdTimestamp" : 1747821772034,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "1d3619ab-e813-480d-a6af-dec3ffd1e8b6",
+      "type" : "password",
+      "createdDate" : 1747849278710,
+      "secretData" : "{\"value\":\"6+lwjbVTSZaSlgY3JD2gFd10r7Q5xf6yDo2msdHtx0M=\",\"salt\":\"XqGnTzndbUI/0G6AMBf70A==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "Warden", "default-roles-zta" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  } ]
+}

@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 import uvicorn
 from collections import defaultdict
+import getpass
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,6 +35,10 @@ class ComplianceRequest(BaseModel):
     username: str
     password: str
     nonce: Optional[str] = None
+
+class AuthRequest(BaseModel):
+    username: str
+    password: str
 
 class Client:
     def __init__(self):
@@ -91,10 +96,11 @@ class Client:
         """Authenticate with Keycloak"""
         try:
             # Validate nonce if provided
-            if nonce and client_ip:
-                if not self.validate_nonce(nonce, client_ip):
-                    logger.error("Invalid or expired nonce")
-                    return False, "Invalid or expired nonce"
+            # if nonce and client_ip:
+            #     if not self.validate_nonce(nonce, client_ip):
+            #         logger.error("Invalid or expired nonce")
+            #         return False, "Invalid or expired nonce"
+
             
             # Get token directly using password grant
             token_url = f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/token"
@@ -147,25 +153,48 @@ async def get_nonce(request: Request):
     
     return {"nonce": nonce}
 
-@app.post("/compliance-check")
-async def compliance_check(request: ComplianceRequest, req: Request):
-    """Handle compliance check request"""
-    try:
-        client_ip = req.client.host
+# @app.post("/compliance-check")
+# async def compliance_check(request: ComplianceRequest, req: Request):
+#     """Handle compliance check request"""
+#     try:
+#         client_ip = req.client.host
         
+#         # Authenticate with Keycloak
+#         success, result = client.authenticate(
+#             request.username, 
+#             request.password,
+#             request.nonce,
+#             client_ip
+#         )
+        
+#         if success:
+#             # Clear the used nonce
+#             if client_ip in sessions:
+#                 del sessions[client_ip]
+                
+#             return {
+#                 "status": "success",
+#                 "token": result
+#             }
+#         else:
+#             raise HTTPException(status_code=401, detail=result)
+            
+#     except Exception as e:
+#         logger.error(f"Error in compliance check: {str(e)}")
+#         raise HTTPException(status_code=500, detail=str(e))
+    
+
+
+@app.post("/authenticate")
+async def authenticate(request: AuthRequest):
+    try:
         # Authenticate with Keycloak
         success, result = client.authenticate(
-            request.username, 
-            request.password,
-            request.nonce,
-            client_ip
+            request.username,
+            request.password
         )
         
         if success:
-            # Clear the used nonce
-            if client_ip in sessions:
-                del sessions[client_ip]
-                
             return {
                 "status": "success",
                 "token": result
@@ -174,7 +203,7 @@ async def compliance_check(request: ComplianceRequest, req: Request):
             raise HTTPException(status_code=401, detail=result)
             
     except Exception as e:
-        logger.error(f"Error in compliance check: {str(e)}")
+        logger.error(f"Error in authentication: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 def main():
@@ -186,6 +215,8 @@ def main():
     logger.info(f"Starting server on {host}:{port}")
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     uvicorn.run(app, host=host, port=port)
+
+    
 
 if __name__ == "__main__":
     main() 

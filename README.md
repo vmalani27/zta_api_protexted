@@ -113,4 +113,64 @@ zta_api/
 │   ├── alembic/
 │   ├── requirements.txt
 │   └── README.md
-``` 
+```
+
+# Keycloak with PostgreSQL Docker Setup
+
+This setup uses Docker Compose to run Keycloak with PostgreSQL using Bitnami's official images.
+
+## Prerequisites
+
+- Docker
+- Docker Compose
+
+## Configuration
+
+The setup includes:
+
+- Keycloak 24.x
+- PostgreSQL 16.x
+- Persistent volume for PostgreSQL data
+- Network configuration for service communication
+
+Default credentials:
+- Keycloak Admin:
+  - Username: `admin`
+  - Password: `admin123`
+- PostgreSQL:
+  - Username: `bn_keycloak`
+  - Password: `bitnami1234`
+  - Database: `bitnami_keycloak`
+
+## Running the Setup
+
+1. Start the services:
+```bash
+docker-compose up -d
+```
+
+2. Access Keycloak:
+- Admin Console: http://localhost:8080/admin
+- HTTP API: http://localhost:8080
+- HTTPS API: https://localhost:8443
+
+## Stopping the Setup
+
+To stop the services:
+```bash
+docker-compose down
+```
+
+To stop and remove volumes (this will delete all data):
+```bash
+docker-compose down -v
+```
+
+## Security Notes
+
+For production use:
+1. Change all default passwords
+2. Use proper TLS certificates
+3. Configure proper network security
+4. Use environment variables or Docker secrets for sensitive data
+5. Consider using a managed database service instead of the PostgreSQL container 
