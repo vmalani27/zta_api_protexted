@@ -5,12 +5,8 @@ services:
       dockerfile: Dockerfile.client
     ports:
       - "5000:5000"
-    environment:
-      - KEYCLOAK_URL=http://keycloak:8080
-      - KEYCLOAK_REALM=zta
-      - KEYCLOAK_CLIENT_ID=pep-backend
-      - KEYCLOAK_CLIENT_SECRET=DXtmD2csJMM21EcTbOXWoFqNRF5yvGS2
-      - PEP_SERVICE_URL=http://pep-service:5001
+    env_file:
+      - .env.client
     networks:
       - keycloak-network
 
@@ -20,12 +16,8 @@ services:
       dockerfile: Dockerfile.pep
     ports:
       - "5001:5001"
-    environment:
-      - KEYCLOAK_URL=http://keycloak:8080
-      - KEYCLOAK_REALM=zta
-      - KEYCLOAK_CLIENT_ID=pep-backend
-      - KEYCLOAK_CLIENT_SECRET=ifTLdQIpnHOscFeMpiY5jiiO58RvjYxu
-      - PDP_SERVICE_URL=http://pdp-service:5002
+    env_file:
+      - .env.pep
     networks:
       - keycloak-network
     depends_on:
@@ -37,15 +29,25 @@ services:
       dockerfile: Dockerfile.pdp
     ports:
       - "5002:5002"
-    environment:
-      - KEYCLOAK_URL=http://keycloak:8080
-      - KEYCLOAK_REALM=zta
-      - KEYCLOAK_CLIENT_ID=pep-backend
-      - KEYCLOAK_CLIENT_SECRET=ifTLdQIpnHOscFeMpiY5jiiO58RvjYxu
+    env_file:
+      - .env.pdp
     networks:
       - keycloak-network
+
+  protected-resource:
+    build:
+      context: .
+      dockerfile: Dockerfile.protected
+    ports:
+      - "5003:5003"
+    env_file:
+      - .env.protected
+    networks:
+      - keycloak-network
+    depends_on:
+      - pep-service
 
 networks:
   keycloak-network:
     external: true
-    name: keycloak-docker
+    name: keycloak-docker_keycloak-network

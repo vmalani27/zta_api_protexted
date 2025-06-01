@@ -1,309 +1,137 @@
+#!/usr/bin/env python3
+import requests
+import logging
+from typing import Optional, Dict, Any, Tuple
+import os
+from dotenv import load_dotenv
+import json
+import jwt
+from jwt import PyJWKClient
+import time
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from typing import Dict, List, Optional
-import jwt
-import os
-import secrets
-import time
-from dotenv import load_dotenv
-import logging
+import uvicorn
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class Subject(BaseModel):
-    roles: List[str]
-    username: str
-    email: str
+# Load environment variables
+load_dotenv()
 
-class Environment(BaseModel):
-    network: str
-    timestamp: str
+# Create FastAPI app
+app = FastAPI()
 
-class PolicyRequest(BaseModel):
-    subject: Subject
+class PDPRequest(BaseModel):
+    token: str
     resource: str
     action: str
-    environment: Environment
-
-class PolicyDecision(BaseModel):
-    decision: bool
-    reason: str
-    obligations: Optional[Dict] = None
-
-class NonceRequest(BaseModel):
-    subject: Subject
-    timestamp: str
-
-class NonceResponse(BaseModel):
-    nonce: str
-    expires_at: int
-
-class SessionKeyRequest(BaseModel):
-    subject: Subject
-    nonce: str
-    nonce_response: str
-    timestamp: str
-
-class SessionKeyResponse(BaseModel):
-    session_key: str
-    expires_at: int
 
 class PDP:
     def __init__(self):
-        # Load policies from configuration
-        self.policies = {
-            "default": {
-                "effect": "deny",
-                "priority": 0
-            },
-            "admin_access": {
-                "effect": "allow",
-                "priority": 100,
-                "conditions": {
-                    "roles": ["admin"],
-                    "resources": ["*"],
-                    "actions": ["*"]
-                }
-            },
-            "teacher_access": {
-                "effect": "allow",
-                "priority": 80,
-                "conditions": {
-                    "roles": ["Teacher"],
-                    "resources": [
-                        "/academic/*",
-                        "/students/*",
-                        "/courses/*",
-                        "/protected-resource"
-                    ],
-                    "actions": ["GET", "POST", "PUT", "access"]
-                }
-            },
-            "student_access": {
-                "effect": "allow",
-                "priority": 60,
-                "conditions": {
-                    "roles": ["Student"],
-                    "resources": [
-                        "/academic/own/*",
-                        "/courses/enrolled/*",
-                        "/protected-resource"
-                    ],
-                    "actions": ["GET", "access"]
-                }
-            },
-            "warden_access": {
-                "effect": "allow",
-                "priority": 70,
-                "conditions": {
-                    "roles": ["Warden"],
-                    "resources": [
-                        "/hostel/*",
-                        "/students/hostel/*",
-                        "/protected-resource"
-                    ],
-                    "actions": ["GET", "POST", "PUT", "access"]
-                }
-            }
-        }
-        # Add nonce and session storage
-        self.nonce_store: Dict[str, Dict] = {}
-        self.session_store: Dict[str, Dict] = {}
-        self.nonce_expiry = 300  # 5 minutes
-        self.session_expiry = 3600  # 1 hour
-
-    def evaluate_policy(self, request: PolicyRequest) -> PolicyDecision:
-        """
-        Evaluate access request against policies
-        """
-        logger.info(f"Evaluating policy for request: {request.dict()}")
+        # Keycloak configuration
+        self.keycloak_host = os.getenv("KEYCLOAK_HOST", "keycloak")
+        self.keycloak_port = os.getenv("KEYCLOAK_PORT", "8080")
+        self.keycloak_url = f"http://{self.keycloak_host}:{self.keycloak_port}"
+        self.realm = os.getenv("REALM", "zta")
+        self.client_id = os.getenv("CLIENT_ID", "pep-backend")
+        self.client_secret = os.getenv("CLIENT_SECRET", "DXtmD2csJMM21EcTbOXWoFqNRF5yvGS2")
         
-        # Sort policies by priority
-        sorted_policies = sorted(
-            self.policies.items(),
-            key=lambda x: x[1].get("priority", 0),
-            reverse=True
-        )
-        logger.info(f"Sorted policies by priority: {[p[0] for p in sorted_policies]}")
-
-        for policy_name, policy in sorted_policies:
-            logger.info(f"Checking policy: {policy_name}")
-            if self._match_policy(policy, request):
-                logger.info(f"Policy {policy_name} matched")
-                return PolicyDecision(
-                    decision=(policy["effect"] == "allow"),
-                    reason=f"Policy {policy_name} matched",
-                    obligations=policy.get("obligations")
-                )
-            else:
-                logger.info(f"Policy {policy_name} did not match")
-
-        logger.info("No matching policy found")
-        return PolicyDecision(
-            decision=False,
-            reason="No matching policy found"
-        )
-
-    def _match_policy(self, policy: Dict, request: PolicyRequest) -> bool:
-        """
-        Check if request matches policy conditions
-        """
-        conditions = policy.get("conditions", {})
-        logger.info(f"Checking conditions: {conditions}")
+        # Timeout configuration
+        self.request_timeout = float(os.getenv("REQUEST_TIMEOUT", "5.0"))
         
-        # Check roles
-        if "roles" in conditions:
-            logger.info(f"Checking roles. Required: {conditions['roles']}, User has: {request.subject.roles}")
-            if not any(role in request.subject.roles for role in conditions["roles"]):
-                logger.info("Role check failed")
-                return False
-            logger.info("Role check passed")
-
-        # Check resources
-        if "resources" in conditions:
-            logger.info(f"Checking resources. Required: {conditions['resources']}, Requested: {request.resource}")
-            if not any(self._match_pattern(request.resource, pattern) 
-                      for pattern in conditions["resources"]):
-                logger.info("Resource check failed")
-                return False
-            logger.info("Resource check passed")
-
-        # Check actions
-        if "actions" in conditions:
-            logger.info(f"Checking actions. Required: {conditions['actions']}, Requested: {request.action}")
-            if request.action.upper() not in [action.upper() for action in conditions["actions"]]:
-                logger.info("Action check failed")
-                return False
-            logger.info("Action check passed")
-
-        logger.info("All checks passed")
-        return True
-
-    def _match_pattern(self, resource: str, pattern: str) -> bool:
-        """
-        Match resource against pattern with wildcard support
-        """
-        if pattern == "*":
-            return True
-        import re
-        pattern = pattern.replace("*", ".*")
-        return bool(re.match(f"^{pattern}$", resource))
-
-    def generate_nonce(self, request: NonceRequest) -> NonceResponse:
-        """
-        Generate a secure nonce for authentication
-        """
-        nonce = secrets.token_hex(32)
-        expires_at = int(time.time()) + self.nonce_expiry
+        # Initialize JWKS client
+        self.jwks_client = PyJWKClient(f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/certs")
         
-        # Store nonce with subject info
-        self.nonce_store[nonce] = {
-            "subject": request.subject,
-            "expires_at": expires_at,
-            "timestamp": request.timestamp
-        }
-        
-        return NonceResponse(nonce=nonce, expires_at=expires_at)
+        logger.info(f"PDP initialized with Keycloak URL: {self.keycloak_url}")
 
-    def validate_nonce_response(self, request: SessionKeyRequest) -> bool:
-        """
-        Validate the client's response to the nonce challenge
-        """
-        if request.nonce not in self.nonce_store:
-            return False
+    def validate_token(self, token: str) -> Tuple[bool, Dict]:
+        """Validate the JWT token"""
+        try:
+            # Get the key ID from the token header
+            unverified_header = jwt.get_unverified_header(token)
+            key_id = unverified_header.get('kid')
             
-        nonce_data = self.nonce_store[request.nonce]
-        
-        # Check if nonce has expired
-        if time.time() > nonce_data["expires_at"]:
-            del self.nonce_store[request.nonce]
-            return False
+            # Get the key from JWKS
+            key = self.jwks_client.get_signing_key(key_id).key
             
-        # Validate the response (this is a simple example - you should implement proper validation)
-        expected_response = self._generate_expected_response(request.nonce, nonce_data["subject"])
-        return request.nonce_response == expected_response
-
-    def generate_session_key(self, request: SessionKeyRequest) -> Optional[SessionKeyResponse]:
-        """
-        Generate session keys if nonce response is valid
-        """
-        if not self.validate_nonce_response(request):
-            return None
+            # Verify and decode the token
+            decoded = jwt.decode(
+                token,
+                key,
+                algorithms=["RS256"],
+                audience=self.client_id,
+                issuer=f"{self.keycloak_url}/realms/{self.realm}"
+            )
             
-        # Generate session key
-        session_key = secrets.token_hex(32)
-        expires_at = int(time.time()) + self.session_expiry
-        
-        # Store session
-        self.session_store[session_key] = {
-            "subject": request.subject,
-            "expires_at": expires_at,
-            "created_at": time.time()
-        }
-        
-        # Clean up used nonce
-        del self.nonce_store[request.nonce]
-        
-        return SessionKeyResponse(session_key=session_key, expires_at=expires_at)
+            return True, decoded
+            
+        except Exception as e:
+            logger.error(f"Token validation error: {str(e)}")
+            return False, {"error": str(e)}
 
-    def _generate_expected_response(self, nonce: str, subject: Subject) -> str:
-        """
-        Generate the expected response for the nonce challenge
-        This is a simple example - implement proper challenge-response mechanism
-        """
-        # In a real implementation, this would be a proper cryptographic challenge-response
-        return f"{nonce}:{subject.username}"
+    def evaluate_policy(self, token_data: Dict, resource: str, action: str) -> Tuple[bool, str]:
+        """Evaluate the access policy"""
+        try:
+            # Get user roles from token
+            roles = token_data.get("realm_access", {}).get("roles", [])
+            username = token_data.get("preferred_username", "")
+            
+            # Simple policy evaluation
+            # This is where you would implement your actual policy logic
+            if "admin" in roles:
+                return True, "Admin access granted"
+                
+            if resource == "protected" and action == "read":
+                if "user" in roles:
+                    return True, "User access granted"
+                    
+            return False, "Access denied by policy"
+            
+        except Exception as e:
+            logger.error(f"Policy evaluation error: {str(e)}")
+            return False, str(e)
 
-# Initialize FastAPI app
-app = FastAPI(title="Policy Decision Point")
+# Create global PDP instance
 pdp = PDP()
 
-@app.post("/evaluate")
-async def evaluate_policy(request: PolicyRequest):
-    """
-    Evaluate access request and return policy decision
-    """
+@app.post("/check")
+async def check_permission(request: PDPRequest):
     try:
-        decision = pdp.evaluate_policy(request)
-        return decision
+        # First validate the token
+        valid, token_data = pdp.validate_token(request.token)
+        if not valid:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Evaluate the policy
+        allowed, message = pdp.evaluate_policy(
+            token_data,
+            request.resource,
+            request.action
+        )
+        
+        if allowed:
+            return {
+                "status": "success",
+                "allowed": True,
+                "message": message
+            }
+        else:
+            raise HTTPException(status_code=403, detail=message)
+            
     except Exception as e:
+        logger.error(f"Error in permission check: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint
-    """
-    return {
-        "status": "healthy",
-        "service": "pdp",
-        "policies": list(pdp.policies.keys())
-    }
-
-@app.post("/nonce")
-async def get_nonce(request: NonceRequest):
-    """
-    Generate a nonce for authentication
-    """
-    try:
-        return pdp.generate_nonce(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/session-key")
-async def get_session_key(request: SessionKeyRequest):
-    """
-    Generate session keys after nonce validation
-    """
-    try:
-        response = pdp.generate_session_key(request)
-        if not response:
-            raise HTTPException(status_code=401, detail="Invalid nonce response")
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def main():
+    # Get host and port from environment or use defaults
+    host = os.getenv("PDP_HOST", "0.0.0.0")
+    port = int(os.getenv("PDP_PORT", "5002"))
+    
+    # Start FastAPI server
+    logger.info(f"Starting PDP server on {host}:{port}")
+    logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
+    uvicorn.run(app, host=host, port=port)
 
 if __name__ == "__main__":
-    import uvicorn
-    print("Starting PDP service on port 5002...")
-    uvicorn.run(app, host="0.0.0.0", port=5002)
+    main()

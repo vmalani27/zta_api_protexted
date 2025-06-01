@@ -39,35 +39,42 @@ class ComplianceRequest(BaseModel):
 class AuthRequest(BaseModel):
     username: str
     password: str
+    resource: str = "protected"  # Default resource
+    action: str = "read"        # Default action
 
 class Client:
     def __init__(self):
         # Keycloak configuration
-        self.keycloak_host = os.getenv("KEYCLOAK_HOST", "192.168.200.2")
+        self.keycloak_host = os.getenv("KEYCLOAK_HOST", "keycloak")
         self.keycloak_port = os.getenv("KEYCLOAK_PORT", "8080")
         self.keycloak_url = f"http://{self.keycloak_host}:{self.keycloak_port}"
         self.realm = os.getenv("REALM", "zta")
         self.client_id = os.getenv("CLIENT_ID", "pep-backend")
-        self.client_secret = os.getenv("CLIENT_SECRET", "1234567890")
+        self.client_secret = os.getenv("CLIENT_SECRET", "DXtmD2csJMM21EcTbOXWoFqNRF5yvGS2")
         
         # PEP service configuration
-        self.pep_host = os.getenv("PEP_HOST", "192.168.200.2")
-        self.pep_port = os.getenv("PEP_PORT", "5000")
+        self.pep_host = os.getenv("PEP_HOST", "pep-service")
+        self.pep_port = os.getenv("PEP_PORT", "5001")
         self.pep_endpoint = f"http://{self.pep_host}:{self.pep_port}"
+        
+        # PDP service configuration
+        self.pdp_host = os.getenv("PDP_HOST", "pdp-service")
+        self.pdp_port = os.getenv("PDP_PORT", "5002")
+        self.pdp_endpoint = f"http://{self.pdp_host}:{self.pdp_port}"
         
         # Network configuration
         self.zt_segment = os.getenv("ZT_SEGMENT", "zt_segment")
         self.allowed_networks = os.getenv("ALLOWED_NETWORKS", "intranet,zt_segment").split(",")
         
         # Timeout configuration
-        self.request_timeout = float(os.getenv("REQUEST_TIMEOUT", "5.0"))  # 5 seconds timeout
+        self.request_timeout = float(os.getenv("REQUEST_TIMEOUT", "5.0"))
         
         # Initialize JWKS client
         self.jwks_client = PyJWKClient(f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/certs")
         
         logger.info(f"Client initialized with Keycloak URL: {self.keycloak_url}")
         logger.info(f"PEP endpoint: {self.pep_endpoint}")
-        logger.info(f"ZT segment: {self.zt_segment}")
+        logger.info(f"PDP endpoint: {self.pdp_endpoint}")
 
     def generate_nonce(self) -> str:
         """Generate a new nonce"""
@@ -92,16 +99,9 @@ class Client:
             
         return True
 
-    def authenticate(self, username: str, password: str, nonce: Optional[str] = None, client_ip: Optional[str] = None) -> Tuple[bool, str]:
+    def authenticate(self, username: str, password: str) -> Tuple[bool, str]:
         """Authenticate with Keycloak"""
         try:
-            # Validate nonce if provided
-            # if nonce and client_ip:
-            #     if not self.validate_nonce(nonce, client_ip):
-            #         logger.error("Invalid or expired nonce")
-            #         return False, "Invalid or expired nonce"
-
-            
             # Get token directly using password grant
             token_url = f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/token"
             logger.info(f"Attempting authentication with URL: {token_url}")
@@ -114,7 +114,7 @@ class Client:
                 "password": password
             }
             
-            response = requests.post(token_url, data=token_data)
+            response = requests.post(token_url, data=token_data, timeout=self.request_timeout)
             logger.info(f"Keycloak response status: {response.status_code}")
             
             if response.status_code != 200:
@@ -134,6 +134,64 @@ class Client:
             
         except Exception as e:
             logger.error(f"Authentication error: {str(e)}")
+            return False, str(e)
+
+    def check_pdp(self, token: str, resource: str, action: str) -> Tuple[bool, str]:
+        """Check permission with PDP"""
+        try:
+            pdp_request = {
+                "token": token,
+                "resource": resource,
+                "action": action
+            }
+            
+            logger.info(f"Sending request to PDP at {self.pdp_endpoint}/check")
+            response = requests.post(
+                f"{self.pdp_endpoint}/check",
+                json=pdp_request,
+                timeout=self.request_timeout
+            )
+            logger.info(f"PDP response status: {response.status_code}")
+            
+            if response.status_code != 200:
+                logger.error(f"PDP error response: {response.text}")
+                return False, f"PDP error: {response.text}"
+                
+            result = response.json()
+            logger.info(f"PDP response: {result}")
+            return result.get("allowed", False), result.get("message", "No message")
+            
+        except Exception as e:
+            logger.error(f"PDP check error: {str(e)}")
+            return False, str(e)
+
+    def check_pep(self, token: str, resource: str, action: str) -> Tuple[bool, str]:
+        """Check permission with PEP"""
+        try:
+            pep_request = {
+                "token": token,
+                "resource": resource,
+                "action": action
+            }
+            
+            logger.info(f"Sending request to PEP at {self.pep_endpoint}/check")
+            response = requests.post(
+                f"{self.pep_endpoint}/check",
+                json=pep_request,
+                timeout=self.request_timeout
+            )
+            logger.info(f"PEP response status: {response.status_code}")
+            
+            if response.status_code != 200:
+                logger.error(f"PEP error response: {response.text}")
+                return False, f"PEP error: {response.text}"
+                
+            result = response.json()
+            logger.info(f"PEP response: {result}")
+            return result.get("allowed", False), result.get("message", "No message")
+            
+        except Exception as e:
+            logger.error(f"PEP check error: {str(e)}")
             return False, str(e)
 
 # Create global client instance
@@ -188,22 +246,57 @@ async def get_nonce(request: Request):
 @app.post("/authenticate")
 async def authenticate(request: AuthRequest):
     try:
-        # Authenticate with Keycloak
-        success, result = client.authenticate(
+        # Step 1: Authenticate with Keycloak
+        logger.info("Step 1: Authenticating with Keycloak...")
+        success, token = client.authenticate(
             request.username,
             request.password
         )
         
-        if success:
-            return {
-                "status": "success",
-                "token": result
-            }
-        else:
-            raise HTTPException(status_code=401, detail=result)
+        if not success:
+            logger.error("Keycloak authentication failed")
+            raise HTTPException(status_code=401, detail=token)
             
+        # Step 2: Check with PDP
+        logger.info("Step 2: Checking with PDP...")
+        logger.info(f"PDP Request - Resource: {request.resource}, Action: {request.action}")
+        pdp_allowed, pdp_message = client.check_pdp(
+            token,
+            request.resource,
+            request.action
+        )
+        logger.info(f"PDP Response - Allowed: {pdp_allowed}, Message: {pdp_message}")
+        
+        if not pdp_allowed:
+            logger.error(f"PDP denied access: {pdp_message}")
+            raise HTTPException(status_code=403, detail=f"PDP denied access: {pdp_message}")
+            
+        # Step 3: Check with PEP
+        logger.info("Step 3: Checking with PEP...")
+        logger.info(f"PEP Request - Resource: {request.resource}, Action: {request.action}")
+        pep_allowed, pep_message = client.check_pep(
+            token,
+            request.resource,
+            request.action
+        )
+        logger.info(f"PEP Response - Allowed: {pep_allowed}, Message: {pep_message}")
+        
+        if not pep_allowed:
+            logger.error(f"PEP denied access: {pep_message}")
+            raise HTTPException(status_code=403, detail=f"PEP denied access: {pep_message}")
+            
+        logger.info("All checks passed successfully")
+        return {
+            "status": "success",
+            "token": token,
+            "pdp_message": pdp_message,
+            "pep_message": pep_message
+        }
+            
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        logger.error(f"Error in authentication: {str(e)}")
+        logger.error(f"Error in authentication flow: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 def main():

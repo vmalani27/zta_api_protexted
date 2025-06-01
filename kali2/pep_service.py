@@ -1,305 +1,147 @@
-from fastapi import FastAPI, HTTPException, Request, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import jwt
-from jwt import PyJWKClient
-from typing import Dict, Any, Optional
+#!/usr/bin/env python3
 import requests
-from functools import lru_cache
+import logging
+from typing import Optional, Dict, Any, Tuple
 import os
 from dotenv import load_dotenv
-import httpx
-import datetime
-import logging
-from pydantic import BaseModel
+import json
+import jwt
+from jwt import PyJWKClient
 import time
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request, Header
+from pydantic import BaseModel
+import uvicorn
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Load environment variables
 load_dotenv()
 
-app = FastAPI(title="PEP Service")
-security = HTTPBearer()
+# Create FastAPI app
+app = FastAPI()
 
-# Models
-class Subject(BaseModel):
-    roles: list[str]
-    username: str
-    email: str
-
-class NonceRequest(BaseModel):
-    subject: Subject
-    timestamp: str
-
-class NonceResponse(BaseModel):
-    nonce: str
-    expires_at: int
-
-class SessionKeyRequest(BaseModel):
-    subject: Subject
-    nonce: str
-
-class SessionKeyResponse(BaseModel):
-    session_key: str
-    expires_at: int
+class PEPRequest(BaseModel):
+    resource: str
+    action: str
+    token: str
 
 class PEP:
     def __init__(self):
-        # Keycloak configuration - running locally on Kali2
-        self.keycloak_host = os.getenv("KEYCLOAK_HOST", "http://localhost:8080")
+        # Keycloak configuration
+        self.keycloak_host = os.getenv("KEYCLOAK_HOST", "keycloak")
+        self.keycloak_port = os.getenv("KEYCLOAK_PORT", "8080")
+        self.keycloak_url = f"http://{self.keycloak_host}:{self.keycloak_port}"
         self.realm = os.getenv("REALM", "zta")
         self.client_id = os.getenv("CLIENT_ID", "pep-backend")
-        self.jwks_url = f"{self.keycloak_host}/realms/{self.realm}/protocol/openid-connect/certs"
-        self.jwks_client = PyJWKClient(self.jwks_url)
+        self.client_secret = os.getenv("CLIENT_SECRET", "DXtmD2csJMM21EcTbOXWoFqNRF5yvGS2")
         
-        # Resource service configuration - using ZT segment IP of Kali4
-        self.resource_service_url = os.getenv("RESOURCE_SERVICE_URL", "http://192.168.200.4:5001")
-        
-        # PDP configuration
-        self.pdp_url = os.getenv("PDP_URL", "http://192.168.200.3:5002")
-        
-        # Network configuration
-        self.pep_host = os.getenv("PEP_HOST", "192.168.200.2")  # ZT segment IP of Kali2
-        self.pep_port = int(os.getenv("PEP_PORT", "5000"))
-        
-        # ZT segment configuration
-        self.zt_segment = os.getenv("ZT_SEGMENT", "zt_segment")
-        self.allowed_networks = os.getenv("ALLOWED_NETWORKS", "intranet,zt_segment").split(",")
+        # PDP service configuration
+        self.pdp_host = os.getenv("PDP_HOST", "pdp-service")
+        self.pdp_port = os.getenv("PDP_PORT", "5002")
+        self.pdp_endpoint = f"http://{self.pdp_host}:{self.pdp_port}"
         
         # Timeout configuration
-        self.resource_timeout = float(os.getenv("RESOURCE_TIMEOUT", "5.0"))  # 5 seconds timeout
-        self.pdp_timeout = float(os.getenv("PDP_TIMEOUT", "3.0"))  # 3 seconds timeout
+        self.request_timeout = float(os.getenv("REQUEST_TIMEOUT", "5.0"))
+        
+        # Initialize JWKS client
+        self.jwks_client = PyJWKClient(f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/certs")
+        
+        logger.info(f"PEP initialized with Keycloak URL: {self.keycloak_url}")
+        logger.info(f"PDP endpoint: {self.pdp_endpoint}")
 
-        self.session_store: Dict[str, Dict] = {}
-        self.http_client = httpx.AsyncClient()
-
-    @lru_cache(maxsize=1)
-    def get_signing_key(self, token: str):
+    def validate_token(self, token: str) -> Tuple[bool, Dict]:
+        """Validate the JWT token"""
         try:
-            return self.jwks_client.get_signing_key_from_jwt(token).key
-        except Exception as e:
-            raise HTTPException(status_code=401, detail="Invalid token signature")
-
-    def validate_token(self, token: str) -> Dict[str, Any]:
-        try:
-            signing_key = self.get_signing_key(token)
+            # Get the key ID from the token header
+            unverified_header = jwt.get_unverified_header(token)
+            key_id = unverified_header.get('kid')
+            
+            # Get the key from JWKS
+            key = self.jwks_client.get_signing_key(key_id).key
+            
+            # Verify and decode the token
             decoded = jwt.decode(
                 token,
-                signing_key,
+                key,
                 algorithms=["RS256"],
-                audience=self.client_id
+                audience=self.client_id,
+                issuer=f"{self.keycloak_url}/realms/{self.realm}"
             )
-            return decoded
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(status_code=401, detail="Token has expired")
-        except jwt.InvalidTokenError:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        except Exception as e:
-            raise HTTPException(status_code=401, detail=str(e))
-
-    async def consult_pdp(self, token_data: Dict[str, Any], resource: str, action: str) -> bool:
-        """
-        Consult the Policy Decision Point (PDP) for access control decisions
-        """
-        try:
-            async with httpx.AsyncClient(timeout=self.pdp_timeout) as client:
-                response = await client.post(
-                    f"{self.pdp_url}/evaluate",
-                    json={
-                        "subject": {
-                            "roles": token_data.get("realm_access", {}).get("roles", []),
-                            "username": token_data.get("preferred_username", ""),
-                            "email": token_data.get("email", "")
-                        },
-                        "resource": resource,
-                        "action": action,
-                        "environment": {
-                            "network": self.zt_segment,
-                            "timestamp": str(datetime.datetime.utcnow())
-                        }
-                    }
-                )
-                if response.status_code == 200:
-                    decision = response.json()
-                    return decision.get("decision", False)
-                logger.error(f"PDP returned status code {response.status_code}")
-                return False
-        except httpx.TimeoutException:
-            logger.error("PDP consultation timed out")
-            raise HTTPException(status_code=503, detail="Policy decision service timed out")
-        except Exception as e:
-            logger.error(f"Error consulting PDP: {str(e)}")
-            raise HTTPException(status_code=503, detail="Policy decision service unavailable")
-
-    def validate_network_access(self, request: Request) -> bool:
-        """
-        Validate if the request is coming from an allowed network
-        """
-        client_ip = request.client.host
-        # Check if request is coming from ZT segment or intranet
-        if client_ip.startswith("192.168.200.") or client_ip.startswith("192.168.100."):
-            return True
-        return False
-
-    async def get_nonce(self, request: NonceRequest) -> NonceResponse:
-        """
-        Request a nonce from PDP
-        """
-        async with self.http_client as client:
-            response = await client.post(f"{self.pdp_url}/nonce", json=request.dict())
-            if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to get nonce")
-            return NonceResponse(**response.json())
-
-    async def get_session_key(self, request: SessionKeyRequest) -> SessionKeyResponse:
-        """
-        Request session keys from PDP after nonce validation
-        """
-        async with self.http_client as client:
-            response = await client.post(f"{self.pdp_url}/session-key", json=request.dict())
-            if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to get session key")
-            return SessionKeyResponse(**response.json())
-
-    def validate_session(self, session_key: str) -> bool:
-        """
-        Validate if a session is still valid
-        """
-        if session_key not in self.session_store:
-            return False
-        
-        session = self.session_store[session_key]
-        if time.time() > session["expires_at"]:
-            del self.session_store[session_key]
-            return False
             
-        return True
+            return True, decoded
+            
+        except Exception as e:
+            logger.error(f"Token validation error: {str(e)}")
+            return False, {"error": str(e)}
 
-pep_middleware = PEP()
+    def check_permission(self, token: str, resource: str, action: str) -> Tuple[bool, str]:
+        """Check permission with PDP"""
+        try:
+            # First validate the token
+            valid, decoded = self.validate_token(token)
+            if not valid:
+                return False, "Invalid token"
+            
+            # Prepare the request to PDP
+            pdp_request = {
+                "token": token,
+                "resource": resource,
+                "action": action
+            }
+            
+            # Send request to PDP
+            response = requests.post(
+                f"{self.pdp_endpoint}/check",
+                json=pdp_request,
+                timeout=self.request_timeout
+            )
+            
+            if response.status_code != 200:
+                return False, f"PDP error: {response.text}"
+                
+            result = response.json()
+            return result.get("allowed", False), result.get("message", "No message")
+            
+        except Exception as e:
+            logger.error(f"Permission check error: {str(e)}")
+            return False, str(e)
 
-@app.middleware("http")
-async def pep_middleware_handler(request: Request, call_next):
-    # Skip PEP for health check and auth endpoints
-    if request.url.path in ["/health", "/auth/nonce", "/auth/session", "/validate-session"]:
-        return await call_next(request)
+# Create global PEP instance
+pep = PEP()
 
+@app.post("/check")
+async def check_permission(request: PEPRequest):
     try:
-        # Validate network access
-        if not pep_middleware.validate_network_access(request):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Access denied: Not in allowed network"}
-            )
-
-        # Get the authorization header
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "No valid authorization header. Please authenticate first."}
-            )
-
-        # Extract and validate token
-        token = auth_header.split(" ")[1]
-        token_data = pep_middleware.validate_token(token)
-
-        # Determine resource and action from the request
-        resource = request.url.path.strip("/")
-        action = request.method.lower()
-
-        # Consult PDP for policy decision
-        if not await pep_middleware.consult_pdp(token_data, resource, action):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Access denied based on policy decision"}
-            )
-
-        # Forward the request to the resource service
-        async with httpx.AsyncClient(timeout=pep_middleware.resource_timeout) as client:
-            try:
-                # Forward the request to the resource service
-                response = await client.request(
-                    method=request.method,
-                    url=f"{pep_middleware.resource_service_url}{request.url.path}",
-                    headers=dict(request.headers),
-                    content=await request.body()
-                )
-                return response
-            except httpx.TimeoutException:
-                logger.error(f"Resource service timed out after {pep_middleware.resource_timeout} seconds")
-                return JSONResponse(
-                    status_code=503,
-                    content={"detail": f"Protected resource service timed out after {pep_middleware.resource_timeout} seconds"}
-                )
-            except httpx.ConnectError:
-                logger.error("Could not connect to resource service")
-                return JSONResponse(
-                    status_code=503,
-                    content={"detail": "Protected resource service is not running or unreachable"}
-                )
-            except httpx.RequestError as e:
-                logger.error(f"Error accessing resource service: {str(e)}")
-                return JSONResponse(
-                    status_code=503,
-                    content={"detail": f"Error accessing protected resource service: {str(e)}"}
-                )
-    except Exception as e:
-        logger.error(f"Unexpected error in PEP middleware: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Internal server error in PEP middleware"}
+        allowed, message = pep.check_permission(
+            request.token,
+            request.resource,
+            request.action
         )
-
-@app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "service": "pep",
-        "host": pep_middleware.pep_host,
-        "network": pep_middleware.zt_segment,
-        "keycloak": pep_middleware.keycloak_host,
-        "pdp": pep_middleware.pdp_url
-    }
-
-@app.post("/auth/nonce")
-async def request_nonce(request: NonceRequest):
-    """
-    Request a nonce for authentication
-    """
-    try:
-        return await pep_middleware.get_nonce(request)
+        
+        if allowed:
+            return {
+                "status": "success",
+                "allowed": True,
+                "message": message
+            }
+        else:
+            raise HTTPException(status_code=403, detail=message)
+            
     except Exception as e:
+        logger.error(f"Error in permission check: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/auth/session")
-async def request_session(request: SessionKeyRequest):
-    """
-    Request session keys after nonce validation
-    """
-    try:
-        return await pep_middleware.get_session_key(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/validate-session/{session_key}")
-async def validate_session(session_key: str):
-    """
-    Validate if a session is still valid
-    """
-    if not pep_middleware.validate_session(session_key):
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-    return {"status": "valid"}
+def main():
+    # Get host and port from environment or use defaults
+    host = os.getenv("PEP_HOST", "0.0.0.0")
+    port = int(os.getenv("PEP_PORT", "5001"))
+    
+    # Start FastAPI server
+    logger.info(f"Starting PEP server on {host}:{port}")
+    logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
+    uvicorn.run(app, host=host, port=port)
 
 if __name__ == "__main__":
-    import uvicorn
-    print(f"Starting PEP service on {pep_middleware.pep_host}:{pep_middleware.pep_port}")
-    print(f"Resource service URL: {pep_middleware.resource_service_url}")
-    print(f"Keycloak URL: {pep_middleware.keycloak_host}")
-    print(f"PDP URL: {pep_middleware.pdp_url}")
-    uvicorn.run(
-        app, 
-        host="0.0.0.0",  # Listen on all interfaces
-        port=pep_middleware.pep_port
-    ) 
+    main() 
