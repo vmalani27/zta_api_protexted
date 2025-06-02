@@ -1,0 +1,13 @@
+json body
+
+
+{
+    "username": "your_username",
+    "password": "your_password"
+}
+
+
+curl command 
+
+
+  curl -X POST http://localhost:5000/authenticate \ -H "Content-Type: application/json" \ -d '{"username": "your_username", "password": "your_password"}'
