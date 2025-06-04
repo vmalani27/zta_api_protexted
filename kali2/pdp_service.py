@@ -30,12 +30,17 @@ class PDPRequest(BaseModel):
 class PDP:
     def __init__(self):
         # Keycloak configuration
-        self.keycloak_host = os.getenv("KEYCLOAK_HOST", "keycloak")
+        self.keycloak_host = os.getenv("KEYCLOAK_HOST", "localhost")
         self.keycloak_port = os.getenv("KEYCLOAK_PORT", "8080")
         self.keycloak_url = f"http://{self.keycloak_host}:{self.keycloak_port}"
         self.realm = os.getenv("REALM", "zta")
         self.client_id = os.getenv("CLIENT_ID", "pep-backend")
         self.client_secret = os.getenv("CLIENT_SECRET", "DXtmD2csJMM21EcTbOXWoFqNRF5yvGS2")
+        
+        # Service endpoints
+        self.pep_host = os.getenv("PEP_HOST", "localhost")
+        self.pep_port = os.getenv("PEP_PORT", "5003")
+        self.pep_endpoint = f"http://{self.pep_host}:{self.pep_port}"
         
         # Timeout configuration
         self.request_timeout = float(os.getenv("REQUEST_TIMEOUT", "5.0"))
@@ -46,51 +51,86 @@ class PDP:
         logger.info(f"PDP initialized with Keycloak URL: {self.keycloak_url}")
 
     def validate_token(self, token: str) -> Tuple[bool, Dict]:
-        """Validate the JWT token"""
+        """Validate the JWT token."""
         try:
-            # Get the key ID from the token header
+        # Extract header
             unverified_header = jwt.get_unverified_header(token)
             key_id = unverified_header.get('kid')
-            
-            # Get the key from JWKS
+
+        # Fetch public key
             key = self.jwks_client.get_signing_key(key_id).key
-            
-            # Verify and decode the token
+
+            unverified_claims = jwt.decode(token, options={"verify_signature": False})
+            print("aud claim:", unverified_claims.get("aud"))
+
+        # Decode with validation
             decoded = jwt.decode(
-                token,
-                key,
-                algorithms=["RS256"],
-                audience=self.client_id,
-                issuer=f"{self.keycloak_url}/realms/{self.realm}"
-            )
-            
+    token,
+    key,
+    algorithms=["RS256"],
+    options={"verify_aud": False},  # disables audience check
+    issuer=f"{self.keycloak_url}/realms/{self.realm}"
+)
+            logger.info(f"Decoded token: {json.dumps(decoded, indent=2)}")
+
             return True, decoded
-            
+
         except Exception as e:
             logger.error(f"Token validation error: {str(e)}")
             return False, {"error": str(e)}
 
+    
     def evaluate_policy(self, token_data: Dict, resource: str, action: str) -> Tuple[bool, str]:
-        """Evaluate the access policy"""
+        """Evaluate the access policy based on roles"""
         try:
-            # Get user roles from token
             roles = token_data.get("realm_access", {}).get("roles", [])
             username = token_data.get("preferred_username", "")
-            
-            # Simple policy evaluation
-            # This is where you would implement your actual policy logic
-            if "admin" in roles:
-                return True, "Admin access granted"
-                
-            if resource == "protected" and action == "read":
-                if "user" in roles:
-                    return True, "User access granted"
-                    
-            return False, "Access denied by policy"
-            
+        
+            logger.info(f"Evaluating access for user: {username} with roles: {roles}")
+            logger.info(f"Requested resource: {resource}, action: {action}")
+
+            # Role-to-permission map
+            role_permissions = {
+                "admin": [
+                    ("users", "create"), ("users", "read"), ("users", "update"), ("users", "delete"),
+                    ("students", "create"), ("students", "read"), ("students", "update"), ("students", "delete"),
+                    ("teachers", "create"), ("teachers", "read"), ("teachers", "update"), ("teachers", "delete"),
+                    ("hostels", "create"), ("hostels", "read"), ("hostels", "update"), ("hostels", "delete"),
+                    ("wardens", "create"), ("wardens", "read"), ("wardens", "update"), ("wardens", "delete"),
+                    ("profile", "read"), ("profile", "update")
+                ],
+                "teacher": [
+                    ("students", "read"), ("students", "update"),
+                    ("teachers", "read"),
+                    ("profile", "read")
+                ],
+                "warden": [
+                    ("students", "read"),
+                    ("hostels", "read"), ("hostels", "update"),
+                    ("wardens", "read"),
+                    ("profile", "read")
+                ],
+                "student": [
+                    ("profile", "read")
+                ]
+            }
+
+            # Convert roles to lowercase for case-insensitive comparison
+            roles = [role.lower() for role in roles]
+            logger.info(f"Normalized roles: {roles}")
+
+            # Evaluate access based on any matching role
+            for role in roles:
+                permissions = role_permissions.get(role, [])
+                if (resource, action) in permissions:
+                    return True, f"{role} access granted to {resource} for {action}"
+
+            return False, f"Access denied to {action} {resource}"
+
         except Exception as e:
             logger.error(f"Policy evaluation error: {str(e)}")
             return False, str(e)
+
 
 # Create global PDP instance
 pdp = PDP()
@@ -100,10 +140,12 @@ async def check_permission(request: PDPRequest):
     try:
         # First validate the token
         valid, token_data = pdp.validate_token(request.token)
+        print("token validated!")
         if not valid:
             raise HTTPException(status_code=401, detail="Invalid token")
         
         # Evaluate the policy
+        print("continuing with permission verification")
         allowed, message = pdp.evaluate_policy(
             token_data,
             request.resource,

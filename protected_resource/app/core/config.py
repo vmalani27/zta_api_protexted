@@ -1,25 +1,33 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
 import secrets
 
 class Settings(BaseSettings):
+    # Application
     PROJECT_NAME: str = "ZTA API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
-    
-    # Security
-    SECRET_KEY: str = secrets.token_urlsafe(32)
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
-    # Database
-    DATABASE_URL: str = "sqlite:///./zta.db"
-    
-    # CORS
-    BACKEND_CORS_ORIGINS: list = ["*"]
-    
-    class Config:
-        case_sensitive = True
-        env_file = ".env"
+    APP_NAME: str = "Protected Resource"
+    DEBUG: bool = True
+    ENVIRONMENT: str = "development"
 
-settings = Settings() 
+    # Server
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+
+    # PEP Service
+    PEP_HOST: str = "localhost"
+    PEP_PORT: int = 5003
+
+    # Optional settings with defaults
+    DATABASE_URL: Optional[str] = None
+    DATABASE_POOL_SIZE: int = 5
+    DATABASE_MAX_OVERFLOW: int = 10
+    BACKEND_CORS_ORIGINS: List[str] = ["*"]
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+        extra = "ignore"  # This will ignore extra fields in the .env file
+
+settings = Settings()

@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  protected-resource:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_SERVER=protected-db
+      - POSTGRES_USER=protected_user
+      - POSTGRES_PASSWORD=protected_password
+      - POSTGRES_DB=protected_resource
+      - SECRET_KEY=your-secret-key-here
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+    depends_on:
+      protected-db:
+        condition: service_healthy
+    networks:
+      - protected-network
+    command: sh -c "./wait-for-it.sh protected-db:5432 && python init_db.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  protected-db:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=protected_user
+      - POSTGRES_PASSWORD=protected_password
+      - POSTGRES_DB=protected_resource
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - protected-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U protected_user -d protected_resource"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+
+networks:
+  protected-network:
+    driver: bridge
