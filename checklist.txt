@@ -34,6 +34,8 @@ Kali1: Network Access Control (NAC)
   - [x] System update status
   - [x] Antivirus status
   - [x] Basic compliance decision
+
+'''
 - [x] Enhanced compliance system:
   - [x] Device scoring system (0-100):
     - [x] System updates (20 points)
@@ -42,6 +44,8 @@ Kali1: Network Access Control (NAC)
     - [x] Security services (15 points)
     - [x] User privileges (15 points)
     - [x] Network security (15 points)
+  '''
+  
   - [x] Threat level analysis:
     - [x] Low threat (score 80-100): Full access
     - [x] Medium threat (score 50-79): Limited access with remediation
@@ -60,6 +64,9 @@ Kali1: Network Access Control (NAC)
     - [x] Historical compliance status
     - [x] Security patch level
     - [x] Device trust score
+
+
+    
 - [x] Integration of compliance check with FreeRADIUS authentication flow
 - [x] Authentication flow implementation:
   - [x] nftables initial packet filtering

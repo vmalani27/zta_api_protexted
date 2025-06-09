@@ -8,6 +8,98 @@ Network Topology for ZT Architecture VMs
 # ZT Segment (trusted)
 - Interface: eth1
 - Subnet: 192.168.200.0/24
+- Each VM gets: 192.168.200.(10 + VM_NUMBER)
+  - Example: kali1 = 192.168.200.11, kali2 = 192.168.200.12, kali3 = 192.168.200.13, kali4 = 192.168.200.14
+
+# Intranet (internal legacy)
+- Interface: eth2
+- Subnet: 192.168.100.0/24
+- Each VM gets: 192.168.100.<VM_NUMBER>
+  - Example: kali1 = 192.168.100.1, kali2 = 192.168.100.2, kali3 = 192.168.100.3, kali4 = 192.168.100.4
+
+# VM Interface Assignments
+---------------------------------
+- kali1:
+  - eth0: DHCP or static (Internet)
+  - eth1: 192.168.200.11 (ZT Segment)
+  - eth2: 192.168.100.1 (Intranet)
+  - VLANs:
+    - eth1.10: Quarantine VLAN (192.168.200.11)
+    - eth1.20: Zero Trust VLAN (192.168.200.11)
+
+- kali2:
+  - eth0: DHCP or static (Internet)
+  - eth1: 192.168.200.12 (ZT Segment)
+  - eth2: 192.168.100.2 (Intranet)
+  - Services:
+    - PEP Service: 192.168.200.12:5003
+    - PDP Service: 192.168.200.12:5002
+    - Keycloak: 192.168.200.12:8080
+
+- kali3:
+  - eth0: DHCP or static (Internet)
+  - eth1: 192.168.200.13 (ZT Segment)
+  - eth2: 192.168.100.3 (Intranet)
+
+- kali4:
+  - eth0: DHCP or static (Internet)
+  - eth1: 192.168.200.14 (ZT Segment)
+  - eth2: 192.168.100.4 (Intranet)
+  - Services:
+    - Protected Resource Service: 192.168.200.14:5001
+
+# VLAN Configuration
+---------------------------------
+- VLAN 10 (Quarantine):
+  - Purpose: Default VLAN for unauthenticated devices
+  - IP Range: 192.168.200.0/24
+  - Access: Limited to authentication and compliance checks
+
+- VLAN 20 (Zero Trust):
+  - Purpose: For authenticated and compliant devices
+  - IP Range: 192.168.200.0/24
+  - Access: Full access to authorized resources
+
+# Network Access Control
+---------------------------------
+- FreeRADIUS Server (Kali1):
+  - Handles 802.1x authentication
+  - Assigns VLANs based on compliance
+  - IP: 192.168.200.11
+  - Ports: 1812 (auth), 1813 (accounting)
+
+# Service Dependencies
+---------------------------------
+1. Kali1 (Network Access Control):
+   - FreeRADIUS must be running for initial authentication
+   - NFTables rules enforce VLAN separation
+
+2. Kali2 (Authentication & Authorization):
+   - PEP Service must be running for policy enforcement
+   - PDP Service must be running for access decisions
+   - Keycloak must be running for identity management
+
+3. Kali4 (Protected Resources):
+   - Protected Resource Service must be running
+   - Only accessible through ZT Segment (eth1)
+   - Requires valid PEP token for access
+
+# Notes
+---------------------------------
+- All services in the ZT Segment (eth1) use the 192.168.200.(10 + VM_NUMBER) addressing scheme
+- Intranet services (eth2) use the 192.168.100.<VM_NUMBER> addressing scheme
+- VLANs are only configured on Kali1 (Network Access Controller)
+- All other machines have nftables disabled
+Network Topology for ZT Architecture VMs
+========================================
+
+# Internet (external)
+- Interface: eth0
+- IP Assignment: DHCP or static as needed
+
+# ZT Segment (trusted)
+- Interface: eth1
+- Subnet: 192.168.200.0/24
 - Each VM gets: 192.168.200.<VM_NUMBER>
   - Example: kali1 = 192.168.200.1, kali2 = 192.168.200.2, kali3 = 192.168.200.3
 

@@ -1,0 +1,72 @@
+authorize {
+    # First, check if the user exists
+    files
+    
+    # Run the compliance script
+    exec
+    
+    # Dynamic VLAN assignment based on compliance
+    if (ok) {
+        # If compliance check passed (score >= 80), assign to Zero Trust VLAN
+        if (reply:Compliance-Score >= 80) {
+            update reply {
+                Tunnel-Type := VLAN
+                Tunnel-Medium-Type := IEEE-802
+                Tunnel-Private-Group-ID := 20
+            }
+        }
+        # If non-compliant, keep in quarantine VLAN
+        else {
+            update reply {
+                Tunnel-Type := VLAN
+                Tunnel-Medium-Type := IEEE-802
+                Tunnel-Private-Group-ID := 10
+            }
+        }
+    }
+}
+
+exec {
+    # Set the shell script path
+    wait = yes
+    program = "/etc/freeradius/3.0/scripts/compliance.sh"
+    input_pairs = request
+    output_pairs = reply
+    shell_escape = yes
+}
+
+authenticate {
+    # Use PAP authentication
+    pap
+}
+
+# Log authentication attempts
+accounting {
+    detail
+    unix
+}
+
+session {
+    # Session management
+    radutmp
+}
+
+post-auth {
+    # Log successful authentications
+    exec
+    remove_reply_message_if_eap
+    
+    # Update accounting with VLAN information
+    if (ok) {
+        update accounting {
+            Tunnel-Type := "%{reply:Tunnel-Type}"
+            Tunnel-Medium-Type := "%{reply:Tunnel-Medium-Type}"
+            Tunnel-Private-Group-ID := "%{reply:Tunnel-Private-Group-ID}"
+        }
+    }
+    
+    Post-Auth-Type REJECT {
+        attr_filter.access_reject
+        eap
+    }
+} 
