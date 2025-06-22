@@ -3,12 +3,9 @@ header('Content-Type: application/json');
 
 // Function to call FreeRADIUS
 function authenticateWithRadius($username, $password) {
-    // This is a placeholder. You'll need to implement the actual FreeRADIUS authentication
-    // using the appropriate method (e.g., radclient, PAM, or direct socket communication)
-    
-    // Example using radclient (you'll need to install it: sudo apt-get install freeradius-utils)
+    // Use radtest for FreeRADIUS authentication
     $command = sprintf(
-        'echo "User-Name=%s,User-Password=%s" | radclient -x localhost auth testing123',
+        'radtest %s %s 127.0.0.1 0 testing123',
         escapeshellarg($username),
         escapeshellarg($password)
     );
@@ -37,12 +34,12 @@ if (empty($username) || empty($password)) {
 if (authenticateWithRadius($username, $password)) {
     // Start session and store user info
     session_start();
-    $_SESSION['authenticated'] = true;
+    $_SESSION['network_authenticated'] = true;  // Set network authentication flag
     $_SESSION['username'] = $username;
     
     echo json_encode([
         'success' => true,
-        'message' => 'Authentication successful',
+        'message' => 'Network authentication successful',
         'redirect' => 'success.php'
     ]);
 } else {

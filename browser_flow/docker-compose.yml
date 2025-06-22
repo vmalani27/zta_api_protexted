@@ -5,10 +5,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.client
-    ports:
-      - "5000:5000"
+    network_mode: host
     environment:
-      - KEYCLOAK_HOST=host.docker.internal
+      - KEYCLOAK_HOST=127.0.0.1
       - KEYCLOAK_PORT=8080
       - REALM=zta
       - CLIENT_ID=pep-backend
@@ -19,75 +18,39 @@ services:
       - PEP_HOST=pep-service
       - PEP_PORT=5003
       - CLIENT_SECRET=b9hBYzsAC8GGIeQoOQcg53jTNRWNRcz8
-    networks:
-      - zta-network
-      - protected-network
-    extra_hosts:
-      - "host.docker.internal:172.17.0.1"  # Docker host IP
-
   pep-service:
     build:
       context: .
       dockerfile: Dockerfile.pep
-    expose:
-      - "5003"
+    network_mode: host
     environment:
-      - KEYCLOAK_HOST=host.docker.internal
+      - KEYCLOAK_HOST=127.0.0.1
       - KEYCLOAK_PORT=8080
       - REALM=zta
       - CLIENT_ID=pep-backend
       - RESOURCE_HOST=protected-resource
       - RESOURCE_PORT=8000
-    networks:
-      - zta-network
-      - protected-network
-    extra_hosts:
-      - "host.docker.internal:172.17.0.1"  # Docker host IP
     depends_on:
       - pdp-service
-
   pdp-service:
     build:
       context: .
       dockerfile: Dockerfile.pdp
-    expose:
-      - "5002"
+    network_mode: host
     environment:
-      - KEYCLOAK_HOST=host.docker.internal
+      - KEYCLOAK_HOST=127.0.0.1
       - KEYCLOAK_PORT=8080
       - REALM=zta
       - CLIENT_ID=pep-backend
       - PEP_HOST=pep-service
       - PEP_PORT=5003
-    networks:
-      - zta-network
-      - protected-network
-    extra_hosts:
-      - "host.docker.internal:172.17.0.1"  # Docker host IP
-
   portknock:
     build:
       context: .
       dockerfile: Dockerfile.portknock
-    expose:
-      - "7000-9000"
+    network_mode: host
     environment:
       - KNOCK_SEQUENCE=7000,8000,9000
       - KNOCK_TIMEOUT=10
       - PORT_OPEN_DURATION=30
       - PROTECTED_PORTS=5001,5002,5003,8080,8000
-    networks:
-      - zta-network
-      - protected-network
-    extra_hosts:
-      - "host.docker.internal:172.17.0.1"  # Docker host IP
-
-networks:
-  zta-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.19.0.0/16  # Use a different subnet to avoid conflicts
-  protected-network:
-    external: true
-    name: protected_resource_protected-network

@@ -8,15 +8,16 @@ import jwt
 from jwt import PyJWKClient
 import time
 import secrets
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response, status, Cookie
 from pydantic import BaseModel
 import uvicorn
 from collections import defaultdict
 import socket
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 import json
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from urllib.parse import urlencode
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -224,6 +225,10 @@ class Client:
 # --- Global Client Instance ---
 client = Client()
 
+# --- Session Management ---
+SESSIONS = defaultdict(dict)
+SESSION_COOKIE_NAME = "zta_session_id"
+
 # --- API Endpoints ---
 @app.get("/get-nonce")
 async def get_nonce(request: Request):
@@ -232,68 +237,78 @@ async def get_nonce(request: Request):
     sessions[client_ip] = {'nonce': nonce, 'timestamp': time.time()}
     return {"nonce": nonce}
 
-@app.post("/authenticate")
-async def authenticate(request: Request):
+@app.get("/login")
+async def login(request: Request):
+    # Generate a state and store it in session
+    session_id = request.cookies.get(SESSION_COOKIE_NAME) or secrets.token_urlsafe(16)
+    state = secrets.token_urlsafe(16)
+    SESSIONS[session_id]["state"] = state
+    # Always use 'localhost' for redirect_uri
+    redirect_uri = f"http://localhost:5000/callback"
+    params = {
+        "client_id": client.client_id,
+        "response_type": "code",
+        "scope": "openid profile email",
+        "redirect_uri": redirect_uri,
+        "state": state,
+    }
+    auth_url = f"{client.keycloak_url}/realms/{client.realm}/protocol/openid-connect/auth?{urlencode(params)}"
+    logger.info(f"Redirecting to: {auth_url}")
+    response = RedirectResponse(auth_url, status_code=status.HTTP_302_FOUND)
+    response.set_cookie(SESSION_COOKIE_NAME, session_id, httponly=True)
+    return response
+
+@app.get("/callback")
+async def callback(request: Request, code: str = None, state: str = None):
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id or session_id not in SESSIONS:
+        return JSONResponse({"error": "Session not found"}, status_code=400)
+    if not code or not state:
+        return JSONResponse({"error": "Missing code or state"}, status_code=400)
+    if SESSIONS[session_id].get("state") != state:
+        return JSONResponse({"error": "Invalid state"}, status_code=400)
+    # Always use 'localhost' for redirect_uri
+    redirect_uri = f"http://localhost:5000/callback"
+    token_url = f"{client.keycloak_url}/realms/{client.realm}/protocol/openid-connect/token"
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "client_id": client.client_id,
+        "client_secret": client.client_secret,
+    }
+    token_resp = requests.post(token_url, data=data, timeout=client.request_timeout)
+    if token_resp.status_code != 200:
+        return JSONResponse({"error": "Token exchange failed", "details": token_resp.text}, status_code=400)
+    token_data = token_resp.json()
+    access_token = token_data["access_token"]
+    SESSIONS[session_id]["resource_authenticated"] = True
+    SESSIONS[session_id]["token"] = access_token
+    # Decode JWT to extract roles
     try:
-        # Log the incoming request
-        logger.info("Received authentication request")
-        logger.info(f"Request headers: {request.headers}")
-        
-        # Get request body
-        body = await request.body()
-        logger.info(f"Request body: {body}")
-        
-        try:
-            data = json.loads(body)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid JSON")
-
-        username = data.get('username')
-        password = data.get('password')
-        operation = data.get('operation')
-
-        if not all([username, password, operation]):
-            raise HTTPException(status_code=400, detail="Missing required fields")
-
-        logger.info(f"Authenticating {username} for operation {operation}")
-        
-        # Step 1: Authenticate with Keycloak
-        success, token = client.authenticate(username, password)
-        if not success:
-            raise HTTPException(status_code=401, detail=token)
-
-        # Step 2: Map operation to resource/action
-        mapping = OPERATION_MAP.get(operation)
-        if not mapping:
-            raise HTTPException(status_code=400, detail="Invalid operation keyword")
-
-        resource = mapping["resource"]
-        action = mapping["action"]
-
-        # Step 3: PDP check
-        allowed, message = client.check_pdp(token, resource, action)
-        if not allowed:
-            raise HTTPException(status_code=403, detail=f"PDP denied: {message}")
-
-        # Step 4: PEP check
-        allowed, message = client.check_pep(token, resource, action)
-        if not allowed:
-            raise HTTPException(status_code=403, detail=f"PEP denied: {message}")
-
-        return {
-            "status": "success",
-            "token": token,
-            "resource": resource,
-            "action": action,
-            "message": message
-        }
-
-    except HTTPException as he:
-        logger.error(f"HTTP Exception: {he.detail}")
-        raise he
+        signing_key = client.jwks_client.get_signing_key_from_jwt(access_token)
+        decoded = jwt.decode(
+            access_token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=client.client_id,
+            options={"verify_exp": True}
+        )
+        roles = decoded.get("realm_access", {}).get("roles", [])
+        SESSIONS[session_id]["roles"] = roles
+        logger.info(f"User roles: {roles}")
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to decode JWT or extract roles: {e}")
+        SESSIONS[session_id]["roles"] = []
+    # Redirect to PHP frontend's success page using absolute URL
+    return RedirectResponse("http://localhost/final_frontend/success.php", status_code=status.HTTP_302_FOUND)
+
+@app.get("/session-status")
+async def session_status(request: Request):
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if session_id and SESSIONS[session_id].get("resource_authenticated"):
+        return {"resource_authenticated": True}
+    return {"resource_authenticated": False}
 
 @app.get("/test-keycloak")
 async def test_keycloak():
