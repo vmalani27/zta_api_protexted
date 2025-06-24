@@ -18,6 +18,9 @@ This document outlines the structure and components of our Zero Trust Architectu
   - PEP Client
     - Handles initial request validation
     - Communicates with PEP Server
+    - Now includes port knocking for enhanced security before requests
+    - Implements nonce/session management to prevent replay attacks
+    - Built with FastAPI for modern, async API handling
   - PEP Server
     - Enforces access policies
     - Communicates with PDP Server
@@ -51,14 +54,18 @@ This document outlines the structure and components of our Zero Trust Architectu
 - 8443: Keycloak HTTPS
 - 1812: RADIUS Authentication
 - 1813: RADIUS Accounting
+- 5000: FastAPI Client (ZTA API Gateway)
+- 5002: PDP Server
+- 5003: PEP Server
+- 7000, 8000, 9000: Port knocking sequence for client authentication
 
 ### Service Communication
 ```
 Client Request Flow:
-Client -> PEP Client -> PEP Server -> PDP Server -> Protected Resource
-                                    |
-                                    v
-                              Keycloak (Auth)
+Client (FastAPI) --[Port Knocking]--> PEP Client -> PEP Server -> PDP Server -> Protected Resource
+                                             |
+                                             v
+                                       Keycloak (Auth)
 ```
 
 ## Security Considerations
@@ -68,12 +75,14 @@ Client -> PEP Client -> PEP Server -> PDP Server -> Protected Resource
 2. Token is validated by PEP Client
 3. PEP Server enforces policies
 4. PDP Server makes final access decisions
+5. Nonce/session management is used to prevent replay attacks
 
 ### 2. Network Security
 - All internal communication is encrypted
 - Network segmentation between components
 - RADIUS authentication for network access
 - TLS for all external communications
+- Port knocking required before sensitive service requests
 
 ### 3. Data Persistence
 - Keycloak: PostgreSQL with 8Gi persistent storage
@@ -106,8 +115,43 @@ Client -> PEP Client -> PEP Server -> PDP Server -> Protected Resource
 - State persistence for critical services
 - Disaster recovery procedures
 
-## Future Considerations
+## Recent & Future Considerations
 - Integration with external identity providers
 - Enhanced monitoring and observability
 - Additional security layers as needed
-- Scalability improvements 
+- Scalability improvements
+- **Recent:** Port knocking, nonce/session management, FastAPI-based client, improved PDP/PEP integration
+
+## Implemented Features
+
+- **Keycloak-based Authentication:**  
+  Centralized identity and access management using Keycloak, with persistent PostgreSQL storage.
+
+- **FastAPI-based Client:**  
+  The client gateway is implemented with FastAPI, providing modern async API handling.
+
+- **Port Knocking:**  
+  Sensitive service requests require a port knocking sequence (7000, 8000, 9000) for enhanced security before access is granted.
+
+- **Nonce/Session Management:**  
+  Nonce generation and session tracking are used to prevent replay attacks and ensure request freshness.
+
+- **PEP/PDP Integration:**  
+  The client communicates with a Policy Enforcement Point (PEP) and Policy Decision Point (PDP) for fine-grained access control.  
+  - PEP enforces access policies and validates tokens.
+  - PDP evaluates policies and makes access decisions.
+
+- **Protected Resource Enforcement:**  
+  Application resources are protected and require valid authentication and authorization for access.
+
+- **Centralized Logging:**  
+  All components log events centrally for monitoring and auditing.
+
+- **Network Segmentation & Encryption:**  
+  Internal communications are encrypted, and network segmentation is enforced between components.
+
+- **High Availability:**  
+  critical services like pep, pdp and client are hosted on docker containers
+
+- **Backup & Recovery:**  
+  Regular backups and disaster recovery procedures are in place
