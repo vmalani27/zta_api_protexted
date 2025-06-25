@@ -1,133 +1,51 @@
-Network Topology for ZT Architecture VMs
-========================================
+Network Topology Overview
+-------------------------
 
-# Internet (external)
-- Interface: eth0
-- IP Assignment: DHCP or static as needed
+Hardware:
+- Raspberry Pi 4 Model B (4GB RAM, 32GB storage)
+- Ethernet port (eth0) configured as DHCP server
 
-# ZT Segment (trusted)
-- Interface: eth1
-- Subnet: 192.168.200.0/24
-- Each VM gets: 192.168.200.(10 + VM_NUMBER)
-  - Example: kali1 = 192.168.200.11, kali2 = 192.168.200.12, kali3 = 192.168.200.13, kali4 = 192.168.200.14
+Software Stack:
+- Docker: Hosts and manages microservices (Keycloak, PEP client/server, PDP, protected resources)
+- Apache2: Serves web interfaces and static content
+- FreeRADIUS: Provides 802.1X network authentication
+- Python-based FastAPI PEP client
+- Keycloak: Identity and Access Management (IAM)
+- PostgreSQL: Persistent storage for Keycloak
 
-# Intranet (internal legacy)
-- Interface: eth2
-- Subnet: 192.168.100.0/24
-- Each VM gets: 192.168.100.<VM_NUMBER>
-  - Example: kali1 = 192.168.100.1, kali2 = 192.168.100.2, kali3 = 192.168.100.3, kali4 = 192.168.100.4
+Network Flow:
+1. **Network Access (Layer 2/3):**
+   - Devices connect via Ethernet (eth0) to the Pi.
+   - Pi acts as DHCP server, assigning IP addresses.
+   - Devices must support 802.1X for network authentication.
+   - FreeRADIUS validates user credentials (username, password, secret).
+   - Only authenticated devices are allowed network access.
 
-# VM Interface Assignments
----------------------------------
-- kali1:
-  - eth0: DHCP or static (Internet)
-  - eth1: 192.168.200.11 (ZT Segment)
-  - eth2: 192.168.100.1 (Intranet)
-  - VLANs:
-    - eth1.10: Quarantine VLAN (192.168.200.11)
-    - eth1.20: Zero Trust VLAN (192.168.200.11)
+2. **Web Authentication (Layer 7):**
+   - Authenticated users are redirected to a web login interface (served by Apache2).
+   - Keycloak manages user authentication, including multi-factor authentication, within its own realm.
 
-- kali2:
-  - eth0: DHCP or static (Internet)
-  - eth1: 192.168.200.12 (ZT Segment)
-  - eth2: 192.168.100.2 (Intranet)
-  - Services:
-    - PEP Service: 192.168.200.12:5003
-    - PDP Service: 192.168.200.12:5002
-    - Keycloak: 192.168.200.12:8080
+3. **Access Control & Authorization:**
+   - Python-based PEP client interacts with Keycloak to obtain and validate tokens.
+   - PEP client sends token to PEP server.
+   - PEP server collaborates with PDP to evaluate access policies based on user roles and permissions.
+   - Port knocking is required before sensitive service requests are processed, adding an extra security layer.
 
-- kali3:
-  - eth0: DHCP or static (Internet)
-  - eth1: 192.168.200.13 (ZT Segment)
-  - eth2: 192.168.100.3 (Intranet)
+4. **Protected Resource Access:**
+   - Protected resources are hosted in isolated Docker containers.
+   - Access is granted only after successful network authentication, web login, port knocking, and policy checks.
 
-- kali4:
-  - eth0: DHCP or static (Internet)
-  - eth1: 192.168.200.14 (ZT Segment)
-  - eth2: 192.168.100.4 (Intranet)
-  - Services:
-    - Protected Resource Service: 192.168.200.14:5001
+5. **Zero Trust Enforcement:**
+   - The Raspberry Pi enforces Zero Trust logic, including distributed firewall rules and network segmentation.
+   - All internal communications are encrypted.
+   - Centralized logging and monitoring are enabled for all components.
 
-# VLAN Configuration
----------------------------------
-- VLAN 10 (Quarantine):
-  - Purpose: Default VLAN for unauthenticated devices
-  - IP Range: 192.168.200.0/24
-  - Access: Limited to authentication and compliance checks
+Summary Diagram:
+----------------
+[Device] --(802.1X/EAP)--> [eth0: FreeRADIUS/DHCP on Pi] --(Web Login)--> [Apache2/Keycloak] --(Token)--> [PEP Client (FastAPI)] --(Port Knocking)--> [PEP Server] --(Policy)--> [PDP] --(Access)--> [Protected Resource (Docker)]
 
-- VLAN 20 (Zero Trust):
-  - Purpose: For authenticated and compliant devices
-  - IP Range: 192.168.200.0/24
-  - Access: Full access to authorized resources
-
-# Network Access Control
----------------------------------
-- FreeRADIUS Server (Kali1):
-  - Handles 802.1x authentication
-  - Assigns VLANs based on compliance
-  - IP: 192.168.200.11
-  - Ports: 1812 (auth), 1813 (accounting)
-
-# Service Dependencies
----------------------------------
-1. Kali1 (Network Access Control):
-   - FreeRADIUS must be running for initial authentication
-   - NFTables rules enforce VLAN separation
-
-2. Kali2 (Authentication & Authorization):
-   - PEP Service must be running for policy enforcement
-   - PDP Service must be running for access decisions
-   - Keycloak must be running for identity management
-
-3. Kali4 (Protected Resources):
-   - Protected Resource Service must be running
-   - Only accessible through ZT Segment (eth1)
-   - Requires valid PEP token for access
-
-# Notes
----------------------------------
-- All services in the ZT Segment (eth1) use the 192.168.200.(10 + VM_NUMBER) addressing scheme
-- Intranet services (eth2) use the 192.168.100.<VM_NUMBER> addressing scheme
-- VLANs are only configured on Kali1 (Network Access Controller)
-- All other machines have nftables disabled
-Network Topology for ZT Architecture VMs
-========================================
-
-# Internet (external)
-- Interface: eth0
-- IP Assignment: DHCP or static as needed
-
-# ZT Segment (trusted)
-- Interface: eth1
-- Subnet: 192.168.200.0/24
-- Each VM gets: 192.168.200.<VM_NUMBER>
-  - Example: kali1 = 192.168.200.1, kali2 = 192.168.200.2, kali3 = 192.168.200.3
-
-# Intranet (internal legacy)
-- Interface: eth2
-- Subnet: 192.168.100.0/24
-- Each VM gets: 192.168.100.<VM_NUMBER>
-  - Example: kali1 = 192.168.100.1, kali2 = 192.168.100.2, kali3 = 192.168.100.3
-
-# VM Interface Assignments
----------------------------------
-- kali1:
-  - eth0: DHCP or static (Internet)
-  - eth1: 192.168.200.1 (ZT Segment)
-  - eth2: 192.168.100.1 (Intranet)
-- kali2:
-  - eth0: DHCP or static (Internet)
-  - eth1: 192.168.200.2 (ZT Segment)
-  - eth2: 192.168.100.2 (Intranet)
-- kali3:
-  - eth0: DHCP or static (Internet)
-  - eth1: 192.168.200.3 (ZT Segment)
-  - eth2: 192.168.100.3 (Intranet)
-
-- kali4:
-  - eth0: DHCP or static (Internet)
-  - eth1: 192.168.200.4 (ZT Segment)
-  - eth2: 192.168.100.4 (Intranet)
-# Note:
-- The last octet of the IP address matches the VM number for both ZT and Intranet segments.
-- This structure helps in easy identification and management of VMs in the network. 
+Key Points:
+- Layered security: Network authentication → Web authentication → Role-based access control
+- Port knocking and nonce/session management for replay protection
+- All services managed via Docker for isolation and scalability
+- Pi acts as the central orchestrator for Zero Trust
