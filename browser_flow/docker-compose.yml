@@ -48,9 +48,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.portknock
-    network_mode: host
+    ports:
+      - "7000:7000"
+      - "8000:8000"
+      - "9000:9000"
     environment:
       - KNOCK_SEQUENCE=7000,8000,9000
       - KNOCK_TIMEOUT=10
       - PORT_OPEN_DURATION=30
       - PROTECTED_PORTS=5001,5002,5003,8080,8000
+
+networks:
+  protected-network:
+    external: true
+    name: protected_resource_protected-network
