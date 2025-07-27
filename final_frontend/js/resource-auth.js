@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 // Reload the page to show success state
-                window.location.reload();
+                window.location.href = '/success.php';
             } else {
                 throw new Error(authResult.message || 'Authentication failed');
             }

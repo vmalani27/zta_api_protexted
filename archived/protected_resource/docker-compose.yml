@@ -19,6 +19,9 @@ services:
     networks:
       - protected-network
     command: sh -c "./wait-for-it.sh protected-db:5432 && python init_db.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
 
   protected-db:
     image: postgres:13

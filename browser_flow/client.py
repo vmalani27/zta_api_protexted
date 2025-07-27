@@ -301,7 +301,7 @@ async def callback(request: Request, code: str = None, state: str = None):
         logger.error(f"Failed to decode JWT or extract roles: {e}")
         SESSIONS[session_id]["roles"] = []
     # Redirect to PHP frontend's success page using absolute URL
-    return RedirectResponse("http://localhost/final_frontend/success.php", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse("/success.php", status_code=status.HTTP_302_FOUND)
 
 @app.get("/session-status")
 async def session_status(request: Request):

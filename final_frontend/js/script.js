@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.success) {
                 // Redirect on success
-                window.location.href = data.redirect || 'success.php';
+                window.location.href = data.redirect || '/success.php';
             } else {
                 // Show error message
                 errorMessage.textContent = data.message || 'Authentication failed';
