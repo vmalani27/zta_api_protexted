@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero Trust Architecture - Authentication</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <div class="lock-icon">🔒</div>
+                <h1>Zero Trust Architecture</h1>
+                <p class="subtitle">Secure Access Gateway</p>
+            </div>
+            
+            <div class="content">
+                <div class="info-box">
+                    <h2>Welcome to ZTA Network</h2>
+                    <p>This network implements a Zero Trust Architecture with multiple layers of security:</p>
+                    <ul>
+                        <li><strong>802.1X Network Authentication</strong> - Device-level verification</li>
+                        <li><strong>Port Knocking</strong> - Service-level protection</li>
+                        <li><strong>Identity & Access Management</strong> - User authentication via Keycloak</li>
+                        <li><strong>Policy Enforcement</strong> - Fine-grained access control (PEP/PDP)</li>
+                    </ul>
+                </div>
+
+                <div class="status-section">
+                    <h3>Authentication Status</h3>
+                    <div id="session-status" class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span id="status-text">Not Authenticated</span>
+                    </div>
+                </div>
+
+                <div class="action-section">
+                    <button id="login-btn" class="btn btn-primary">
+                        <span>🔑</span> Authenticate with Keycloak
+                    </button>
+                    <p class="note">You will be redirected to Keycloak for secure authentication</p>
+                </div>
+            </div>
+
+            <div class="footer">
+                <p>Zero Trust Architecture • Never Trust, Always Verify</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

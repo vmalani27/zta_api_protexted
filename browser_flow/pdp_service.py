@@ -35,7 +35,7 @@ class PDP:
         self.keycloak_url = f"http://{self.keycloak_host}:{self.keycloak_port}"
         self.realm = os.getenv("REALM", "zta")
         self.client_id = os.getenv("CLIENT_ID", "pep-backend")
-        self.client_secret = os.getenv("CLIENT_SECRET", "DXtmD2csJMM21EcTbOXWoFqNRF5yvGS2")
+        self.client_secret = os.getenv("CLIENT_SECRET", "not defined")
         
         # Service endpoints
         self.pep_host = os.getenv("PEP_HOST", "localhost")

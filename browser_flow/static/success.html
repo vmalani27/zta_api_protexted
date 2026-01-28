@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication Successful - ZTA</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header success-header">
+                <div class="success-icon">✓</div>
+                <h1>Authentication Successful</h1>
+                <p class="subtitle">Welcome to the Zero Trust Network</p>
+            </div>
+            
+            <div class="content">
+                <div class="info-box success-box">
+                    <h2>Access Granted</h2>
+                    <p>You have successfully authenticated and passed all security checks:</p>
+                    <ul class="checklist">
+                        <li>✓ Network authentication verified</li>
+                        <li>✓ Port knocking sequence completed</li>
+                        <li>✓ Keycloak identity confirmed</li>
+                        <li>✓ Policy enforcement passed</li>
+                    </ul>
+                </div>
+
+                <div class="user-info">
+                    <h3>Session Information</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <label>Status:</label>
+                            <span id="session-status" class="badge badge-success">Active</span>
+                        </div>
+                        <div class="info-item">
+                            <label>User Roles:</label>
+                            <div id="user-roles" class="roles-container">
+                                <span class="loading">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <label>Session ID:</label>
+                            <span id="session-id" class="mono">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <h3>Available Actions</h3>
+                    <div class="action-grid">
+                        <button class="btn btn-secondary" onclick="checkSessionStatus()">
+                            🔄 Refresh Session Status
+                        </button>
+                        <button class="btn btn-secondary" onclick="testPEP()">
+                            🛡️ Test PEP Service
+                        </button>
+                        <button class="btn btn-secondary" onclick="testPDP()">
+                            📋 Test PDP Service
+                        </button>
+                        <button class="btn btn-secondary" onclick="testResourceAccess('studentReadProfile')">
+                            🔐 Test Full ZTA Flow
+                        </button>
+                        <button class="btn btn-danger" onclick="logout()">
+                            🚪 Logout
+                        </button>
+                    </div>
+                </div>
+
+                <div id="test-results" class="test-results" style="display: none;">
+                    <h3>Test Results</h3>
+                    <pre id="results-content"></pre>
+                </div>
+            </div>
+
+            <div class="footer">
+                <p>Zero Trust Architecture • Session Active</p>
+                <button class="link-btn" onclick="window.location.href='/'">← Back to Home</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/success.js"></script>
+</body>
+</html>

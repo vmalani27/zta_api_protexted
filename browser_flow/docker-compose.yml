@@ -1,3 +1,76 @@
+# version: '3.8'
+
+# services:
+#   client-service:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile.client
+#     network_mode: host
+#     environment:
+#       - KEYCLOAK_HOST=192.168.31.169
+#       - KEYCLOAK_PORT=8080
+#       - REALM=zta
+#       - CLIENT_ID=pep-backend
+#       # - PDP_HOST=pdp-service
+#       - PDP_HOST=127.0.0.1
+#       - PDP_PORT=5002
+#       - RESOURCE_HOST=protected-resource
+#       - RESOURCE_PORT=8000
+#       # - PEP_HOST=pep-service
+#       - PEP_HOST=127.0.0.1
+#       - PEP_PORT=5003
+#       - CLIENT_SECRET=d52pE1IzTDw1f94AnuuH59Hudkw37Hp7
+#   pep-service:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile.pep
+#     network_mode: host
+#     environment:
+#       - KEYCLOAK_HOST=192.168.31.169
+#       - KEYCLOAK_PORT=8080
+#       - REALM=zta
+#       - CLIENT_ID=pep-backend
+#       - RESOURCE_HOST=protected-resource
+#       - RESOURCE_PORT=8000
+#     depends_on:
+#       - pdp-service
+#   pdp-service:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile.pdp
+#     network_mode: host
+#     environment:
+#       - KEYCLOAK_HOST=192.168.31.169
+#       - KEYCLOAK_PORT=8080
+#       - REALM=zta
+#       - CLIENT_ID=pep-backend
+#       - PEP_HOST=pep-service
+#       - PEP_PORT=5003
+#   portknock:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile.portknock
+#     ports:
+#       - "7000:7000"
+#       - "8000:8000"
+#       - "9000:9000"
+#     environment:
+#       - KNOCK_SEQUENCE=7000,8000,9000
+#       - KNOCK_TIMEOUT=10
+#       - PORT_OPEN_DURATION=30
+#       - PROTECTED_PORTS=5001,5002,5003,8000
+
+# networks:
+#   protected-network:
+#     external: true
+#     name: protected_resource_protected-network
+
+
+
+
+
+
+
 version: '3.8'
 
 services:
@@ -7,43 +80,46 @@ services:
       dockerfile: Dockerfile.client
     network_mode: host
     environment:
-      - KEYCLOAK_HOST=127.0.0.1
+      - KEYCLOAK_HOST=192.168.31.169
       - KEYCLOAK_PORT=8080
       - REALM=zta
       - CLIENT_ID=pep-backend
-      - PDP_HOST=pdp-service
+      - CLIENT_SECRET=d52pE1IzTDw1f94AnuuH59Hudkw37Hp7
+      - PDP_HOST=127.0.0.1
       - PDP_PORT=5002
-      - RESOURCE_HOST=protected-resource
-      - RESOURCE_PORT=8000
-      - PEP_HOST=pep-service
+      - PEP_HOST=127.0.0.1
       - PEP_PORT=5003
-      - CLIENT_SECRET=b9hBYzsAC8GGIeQoOQcg53jTNRWNRcz8
+      - RESOURCE_HOST=127.0.0.1
+      - RESOURCE_PORT=8001
+
   pep-service:
     build:
       context: .
       dockerfile: Dockerfile.pep
     network_mode: host
     environment:
-      - KEYCLOAK_HOST=127.0.0.1
+      - KEYCLOAK_HOST=192.168.31.169
       - KEYCLOAK_PORT=8080
       - REALM=zta
       - CLIENT_ID=pep-backend
-      - RESOURCE_HOST=protected-resource
-      - RESOURCE_PORT=8000
+      - RESOURCE_HOST=127.0.0.1
+      - RESOURCE_PORT=8001
     depends_on:
       - pdp-service
+
   pdp-service:
     build:
       context: .
       dockerfile: Dockerfile.pdp
     network_mode: host
     environment:
-      - KEYCLOAK_HOST=127.0.0.1
+      - KEYCLOAK_HOST=192.168.31.169
       - KEYCLOAK_PORT=8080
       - REALM=zta
       - CLIENT_ID=pep-backend
-      - PEP_HOST=pep-service
+      - PEP_HOST=127.0.0.1
       - PEP_PORT=5003
+
   portknock:
     build:
       context: .
@@ -56,9 +132,12 @@ services:
       - KNOCK_SEQUENCE=7000,8000,9000
       - KNOCK_TIMEOUT=10
       - PORT_OPEN_DURATION=30
-      - PROTECTED_PORTS=5001,5002,5003,8080,8000
+      - PROTECTED_PORTS=5001,5002,5003,8001
 
-networks:
-  protected-network:
-    external: true
-    name: protected_resource_protected-network
+  protected-resource:
+    build:
+      context: .
+      dockerfile: Dockerfile.resource
+    network_mode: host
+    environment:
+      - SECRET_KEY=your-secret-key-here

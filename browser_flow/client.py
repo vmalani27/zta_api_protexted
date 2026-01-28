@@ -9,11 +9,12 @@ from jwt import PyJWKClient
 import time
 import secrets
 from fastapi import FastAPI, HTTPException, Request, Response, status, Cookie
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 from collections import defaultdict
 import socket
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 import json
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 app = FastAPI()
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Add a middleware to log all requests
 @app.middleware("http")
@@ -230,6 +234,16 @@ SESSIONS = defaultdict(dict)
 SESSION_COOKIE_NAME = "zta_session_id"
 
 # --- API Endpoints ---
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    with open("static/index.html", "r") as f:
+        return f.read()
+
+@app.get("/success.html", response_class=HTMLResponse)
+async def success_page():
+    with open("static/success.html", "r") as f:
+        return f.read()
+
 @app.get("/get-nonce")
 async def get_nonce(request: Request):
     client_ip = request.client.host
@@ -243,8 +257,9 @@ async def login(request: Request):
     session_id = request.cookies.get(SESSION_COOKIE_NAME) or secrets.token_urlsafe(16)
     state = secrets.token_urlsafe(16)
     SESSIONS[session_id]["state"] = state
-    # Always use 'localhost' for redirect_uri
-    redirect_uri = f"http://localhost:5000/callback"
+    # Use the host from the request instead of hardcoded localhost
+    host = request.headers.get("host", "localhost:5000")
+    redirect_uri = f"http://{host}/callback"
     params = {
         "client_id": client.client_id,
         "response_type": "code",
@@ -267,8 +282,9 @@ async def callback(request: Request, code: str = None, state: str = None):
         return JSONResponse({"error": "Missing code or state"}, status_code=400)
     if SESSIONS[session_id].get("state") != state:
         return JSONResponse({"error": "Invalid state"}, status_code=400)
-    # Always use 'localhost' for redirect_uri
-    redirect_uri = f"http://localhost:5000/callback"
+    # Use the host from the request instead of hardcoded localhost
+    host = request.headers.get("host", "localhost:5000")
+    redirect_uri = f"http://{host}/callback"
     token_url = f"{client.keycloak_url}/realms/{client.realm}/protocol/openid-connect/token"
     data = {
         "grant_type": "authorization_code",
@@ -300,15 +316,147 @@ async def callback(request: Request, code: str = None, state: str = None):
     except Exception as e:
         logger.error(f"Failed to decode JWT or extract roles: {e}")
         SESSIONS[session_id]["roles"] = []
-    # Redirect to PHP frontend's success page using absolute URL
-    return RedirectResponse("/success.php", status_code=status.HTTP_302_FOUND)
+    # Redirect to success page
+    return RedirectResponse("/success.html", status_code=status.HTTP_302_FOUND)
 
 @app.get("/session-status")
 async def session_status(request: Request):
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     if session_id and SESSIONS[session_id].get("resource_authenticated"):
-        return {"resource_authenticated": True}
+        return {
+            "resource_authenticated": True,
+            "roles": SESSIONS[session_id].get("roles", []),
+            "session_id": session_id
+        }
     return {"resource_authenticated": False}
+
+@app.post("/api/test-pep")
+async def test_pep_endpoint(request: Request):
+    """Test PEP service with current session token"""
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id or session_id not in SESSIONS:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    token = SESSIONS[session_id].get("token")
+    if not token:
+        raise HTTPException(status_code=401, detail="No token found")
+    
+    # Test PEP with a sample resource/action
+    resource = "students"
+    action = "read"
+    
+    logger.info(f"Testing PEP service for resource={resource}, action={action}")
+    allowed, message = client.check_pep(token, resource, action)
+    
+    return {
+        "service": "PEP",
+        "resource": resource,
+        "action": action,
+        "allowed": allowed,
+        "message": message,
+        "port_knock_performed": True
+    }
+
+@app.post("/api/test-pdp")
+async def test_pdp_endpoint(request: Request):
+    """Test PDP service with current session token"""
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id or session_id not in SESSIONS:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    token = SESSIONS[session_id].get("token")
+    if not token:
+        raise HTTPException(status_code=401, detail="No token found")
+    
+    # Test PDP with a sample resource/action
+    resource = "students"
+    action = "read"
+    
+    logger.info(f"Testing PDP service for resource={resource}, action={action}")
+    allowed, message = client.check_pdp(token, resource, action)
+    
+    return {
+        "service": "PDP",
+        "resource": resource,
+        "action": action,
+        "allowed": allowed,
+        "message": message,
+        "port_knock_performed": True
+    }
+
+@app.post("/api/access-resource")
+async def access_resource(request: Request):
+    """Make a protected resource request through full ZTA flow"""
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id or session_id not in SESSIONS:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    token = SESSIONS[session_id].get("token")
+    if not token:
+        raise HTTPException(status_code=401, detail="No token found")
+    
+    # Get request body
+    body = await request.json()
+    operation = body.get("operation", "studentReadProfile")
+    
+    # Map operation to resource/action
+    if operation not in OPERATION_MAP:
+        raise HTTPException(status_code=400, detail=f"Unknown operation: {operation}")
+    
+    mapping = OPERATION_MAP[operation]
+    resource = mapping["resource"]
+    action = mapping["action"]
+    
+    logger.info(f"Processing resource access: operation={operation}, resource={resource}, action={action}")
+    
+    # Step 1: Check PEP (includes port knocking)
+    logger.info("Step 1: Checking PEP...")
+    pep_allowed, pep_message = client.check_pep(token, resource, action)
+    
+    if not pep_allowed:
+        return {
+            "success": False,
+            "step": "PEP",
+            "message": pep_message,
+            "operation": operation,
+            "resource": resource,
+            "action": action
+        }
+    
+    # Step 2: Check PDP (includes port knocking)
+    logger.info("Step 2: Checking PDP...")
+    pdp_allowed, pdp_message = client.check_pdp(token, resource, action)
+    
+    if not pdp_allowed:
+        return {
+            "success": False,
+            "step": "PDP",
+            "message": pdp_message,
+            "operation": operation,
+            "resource": resource,
+            "action": action
+        }
+    
+    # Step 3: Access granted
+    logger.info("All checks passed - access granted")
+    return {
+        "success": True,
+        "message": "Access granted through full ZTA flow",
+        "operation": operation,
+        "resource": resource,
+        "action": action,
+        "steps_completed": ["Port Knocking", "PEP Check", "PDP Check"],
+        "pep_message": pep_message,
+        "pdp_message": pdp_message
+    }
+
+@app.get("/api/operations")
+async def get_operations():
+    """Get list of available operations for testing"""
+    return {
+        "operations": list(OPERATION_MAP.keys()),
+        "mappings": OPERATION_MAP
+    }
 
 @app.get("/test-keycloak")
 async def test_keycloak():
@@ -336,7 +484,7 @@ async def test_keycloak():
 
 # --- Main Entry Point ---
 def main():
-    host = os.getenv("CLIENT_HOST", "0.0.0.0")
+    host = "0.0.0.0"
     port = int(os.getenv("CLIENT_PORT", "5000"))
     logger.info(f"Starting server at {host}:{port}")
     uvicorn.run(app, host=host, port=port)

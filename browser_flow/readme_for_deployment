@@ -1,0 +1,11 @@
+for client pep docker file
+no config necessary in code
+docker run -d \
+  --name zta-client \
+  -p 5000:5000 \
+  --env-file .env \
+  zta-client-image
+
+
+
+d52pE1IzTDw1f94AnuuH59Hudkw37Hp7
